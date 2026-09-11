@@ -1,0 +1,11 @@
+{
+  "profiles": {
+    "ETABSModelDefinitionValidator.UI": {
+      "commandName": "Project",
+      "commandLineArgs": "\"C:\\Users\\mosmohamed\\Downloads\\DCG-P01-B01-ULT-v22.3-Rev33-MNA.xlsx\" \"C:\\Users\\mosmohamed\\source\\repos\\structural vaildatiion\\config\\default-validation-profile.json\" \"C:\\Users\\mosmohamed\\Downloads\\validation-report.csv\""
+    },
+    "Profile 1": {
+      "commandName": "Executable"
+    }
+  }
+}

@@ -5,6 +5,15 @@
     <RootNamespace>ETABSModelDefinitionValidator.UI</RootNamespace>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <Optimize>False</Optimize>
+    <DebugType>full</DebugType>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+    <DebugType>full</DebugType>
+  </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\ETABSModelDefinitionValidator.Core\ETABSModelDefinitionValidator.Core.csproj" />
     <ProjectReference Include="..\ETABSModelDefinitionValidator.Excel\ETABSModelDefinitionValidator.Excel.csproj" />
