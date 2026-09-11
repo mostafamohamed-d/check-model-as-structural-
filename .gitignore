@@ -1,0 +1,8 @@
+bin/
+obj/
+*.user
+.vs/
+*.suo
+*.csv
+*.xlsx
+!tests/TestData/**/*.xlsx

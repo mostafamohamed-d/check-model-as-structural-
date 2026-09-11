@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ETABSModelDefinitionValidator.Core/ETABSModelDefinitionValidator.Core.csproj" />
+    <Project Path="src/ETABSModelDefinitionValidator.Excel/ETABSModelDefinitionValidator.Excel.csproj" />
+    <Project Path="src/ETABSModelDefinitionValidator.Reporting/ETABSModelDefinitionValidator.Reporting.csproj" />
+    <Project Path="src/ETABSModelDefinitionValidator.Rules/ETABSModelDefinitionValidator.Rules.csproj" />
+    <Project Path="src/ETABSModelDefinitionValidator.UI/ETABSModelDefinitionValidator.UI.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ETABSModelDefinitionValidator.Tests/ETABSModelDefinitionValidator.Tests.csproj" />
+  </Folder>
+</Solution>
