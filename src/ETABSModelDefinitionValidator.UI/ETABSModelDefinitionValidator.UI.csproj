@@ -1,0 +1,15 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>ETABSModelDefinitionValidator.UI</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ETABSModelDefinitionValidator.Core\ETABSModelDefinitionValidator.Core.csproj" />
+    <ProjectReference Include="..\ETABSModelDefinitionValidator.Excel\ETABSModelDefinitionValidator.Excel.csproj" />
+    <ProjectReference Include="..\ETABSModelDefinitionValidator.Rules\ETABSModelDefinitionValidator.Rules.csproj" />
+    <ProjectReference Include="..\ETABSModelDefinitionValidator.Reporting\ETABSModelDefinitionValidator.Reporting.csproj" />
+  </ItemGroup>
+
+</Project>

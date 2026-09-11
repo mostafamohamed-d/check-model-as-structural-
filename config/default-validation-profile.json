@@ -1,0 +1,49 @@
+{
+  "ConfigVersion": "1.0",
+  "CodeProfile": "ACI318-19",
+  "Walls": {
+    "CheckedModifiers": ["f11", "f22", "f12", "m11", "m22", "m12"],
+    "DefaultModifierValue": 0.70,
+    "ExceptionPrefixes": ["WT", "BW"]
+  },
+  "Slabs": {
+    "Classifications": {
+      "PT": { "NamePrefixes": ["PT"], "M11": 0.35, "M22": 0.35, "M12": 0.35 },
+      "Stair": { "NamePrefixes": ["STAIR"], "M11": 0.01, "M22": 0.01, "M12": 0.01 },
+      "Ramp": { "NamePrefixes": ["RAMP"], "M11": 0.01, "M22": 0.01, "M12": 0.01 },
+      "Raft": { "NamePrefixes": ["RAFT"], "M11": 1.0, "M22": 1.0, "M12": 1.0 },
+      "Ordinary": { "NamePrefixes": [], "M11": 0.25, "M22": 0.25, "M12": 0.25 }
+    }
+  },
+  "Modal": {
+    "MinimumTargetRatioPercent": 95.0
+  },
+  "Diaphragm": {
+    "RequiredRigidityType": "Semi-Rigid"
+  },
+  "Frames": {
+    "RequireAutoMesh": true,
+    "RequireIntegerEndOffsets": true,
+    "IntegerTolerance": 0.001
+  },
+  "Loads": {
+    "DeadPatternTypeName": "Dead",
+    "RequiredSelfWeightMultiplier": 1.0
+  },
+  "LoadCases": {
+    "WarnIfLoadNameDoesNotContainCaseName": true
+  },
+  "ColumnOverwrites": {
+    "RequiredDesignSection": "Program Determined"
+  },
+  "RebarMaterials": {
+    "ToleranceMpa": 0.5,
+    "GradeProfiles": {
+      "Fy420": { "FyMpa": 420, "FuMpa": 525, "FyeMpa": 420, "FueMpa": 525 },
+      "Fy500": { "FyMpa": 500, "FuMpa": 625, "FyeMpa": 500, "FueMpa": 625 }
+    }
+  },
+  "ConcreteMaterials": {
+    "FcToleranceMpa": 0.5
+  }
+}

@@ -1,0 +1,11 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>ETABSModelDefinitionValidator.Reporting</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ETABSModelDefinitionValidator.Core\ETABSModelDefinitionValidator.Core.csproj" />
+  </ItemGroup>
+
+</Project>
