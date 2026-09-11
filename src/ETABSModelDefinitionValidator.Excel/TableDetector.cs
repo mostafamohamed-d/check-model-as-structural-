@@ -20,7 +20,12 @@ namespace ETABSModelDefinitionValidator.Excel
             _logger = logger ?? new NullValidationLogger();
         }
 
-        public List<RawTable> DetectTables(XLWorkbook workbook, List<ImportIssue> issues)
+        /// <param name="requiredTitles">When non-null, only these table titles (case-insensitive)
+        /// have their data rows read - every other detected table is added with RowsSkipped=true
+        /// and zero rows, skipping the expensive per-row scan entirely. This is the dominant cost
+        /// on large sheets (thousands of rows), so restricting it to only what the active
+        /// validation profile needs is the main lever for import performance.</param>
+        public List<RawTable> DetectTables(XLWorkbook workbook, List<ImportIssue> issues, ISet<string> requiredTitles = null)
         {
             var tables = new List<RawTable>();
 
@@ -71,6 +76,14 @@ namespace ETABSModelDefinitionValidator.Excel
                     continue;
                 }
 
+                if (requiredTitles != null && !requiredTitles.Contains(title))
+                {
+                    table.RowsSkipped = true;
+                    tables.Add(table);
+                    _logger.Info($"Table '{title}' in worksheet '{worksheet.Name}' detected but not read - excluded by the current validation profile.");
+                    continue;
+                }
+
                 var dataStartRow = headerRowNumber + 1;
                 var firstDataCandidate = worksheet.Cell(dataStartRow, 1).GetString();
                 if (string.IsNullOrWhiteSpace(firstDataCandidate))
@@ -79,10 +92,12 @@ namespace ETABSModelDefinitionValidator.Excel
                     dataStartRow++;
                 }
 
+                var hasColumnOne = table.Columns.Exists(c => c.ColumnIndex == 1);
+
                 for (var row = dataStartRow; row <= lastRow; row++)
                 {
-                    var firstCellValue = worksheet.Cell(row, 1).GetString();
                     var rowHasAnyData = false;
+                    string firstCellValue = null;
                     var rawRow = new RawRow { ExcelRowNumber = row };
 
                     foreach (var (normalizedKey, _, colIndex) in table.Columns)
@@ -94,11 +109,20 @@ namespace ETABSModelDefinitionValidator.Excel
                             : cell.DataType == XLDataType.Number ? (object)cell.GetDouble()
                             : cell.GetString();
 
+                        if (colIndex == 1) firstCellValue = value.ToString();
+
                         if (!rawRow.Values.ContainsKey(normalizedKey))
                         {
                             rawRow.Values[normalizedKey] = value;
                         }
                         rowHasAnyData = true;
+                    }
+
+                    // Column 1 wasn't a recognized header (rare) - fall back to reading it directly
+                    // so a row that's only blank in recognized columns still isn't kept as "data".
+                    if (!hasColumnOne)
+                    {
+                        firstCellValue = worksheet.Cell(row, 1).GetString();
                     }
 
                     if (!rowHasAnyData && string.IsNullOrWhiteSpace(firstCellValue))

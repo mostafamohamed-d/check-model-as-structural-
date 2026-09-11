@@ -20,11 +20,23 @@ namespace ETABSModelDefinitionValidator.Excel
     {
         private readonly string _filePath;
         private readonly IValidationLogger _logger;
+        private readonly HashSet<string> _requiredTitles;
 
         public ExcelModelDataProvider(string filePath, IValidationLogger logger = null)
+            : this(filePath, logger, restrictToTables: null)
+        {
+        }
+
+        /// <param name="restrictToTables">When non-null, only these table titles are fully read -
+        /// every other table detected in the workbook has its (potentially large) row scan
+        /// skipped entirely. Callers derive this from the ApplicableTables of whichever rules are
+        /// actually enabled for the run, so disabling a rule category also skips importing the
+        /// tables only that category needed. Titles are matched case-insensitively.</param>
+        public ExcelModelDataProvider(string filePath, IValidationLogger logger, IEnumerable<string> restrictToTables)
         {
             _filePath = filePath ?? throw new ArgumentNullException(nameof(filePath));
             _logger = logger ?? new NullValidationLogger();
+            _requiredTitles = restrictToTables == null ? null : new HashSet<string>(restrictToTables, StringComparer.OrdinalIgnoreCase);
         }
 
         public ModelData GetModelData()
@@ -49,10 +61,18 @@ namespace ETABSModelDefinitionValidator.Excel
             using (workbook)
             {
                 var detector = new TableDetector(_logger);
-                var tables = detector.DetectTables(workbook, model.ImportIssues);
+                var tables = detector.DetectTables(workbook, model.ImportIssues, _requiredTitles);
                 var byTitle = tables
                     .GroupBy(t => t.TableTitle, StringComparer.OrdinalIgnoreCase)
                     .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+                foreach (var table in tables)
+                {
+                    if (table.RowsSkipped)
+                    {
+                        model.SkippedTables.Add(table.TableTitle);
+                    }
+                }
 
                 var recognized = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 

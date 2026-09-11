@@ -55,5 +55,10 @@ namespace ETABSModelDefinitionValidator.Excel
         public List<(string NormalizedKey, string OriginalHeader, int ColumnIndex)> Columns { get; } = new List<(string, string, int)>();
 
         public List<RawRow> Rows { get; } = new List<RawRow>();
+
+        /// <summary>True when this table's data rows were deliberately not read because the
+        /// caller restricted detection to a set of required tables and this one wasn't in it -
+        /// distinct from a table that was read and legitimately has zero rows.</summary>
+        public bool RowsSkipped { get; set; }
     }
 }

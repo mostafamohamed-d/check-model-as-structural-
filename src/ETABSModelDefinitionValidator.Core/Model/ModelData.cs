@@ -32,6 +32,11 @@ namespace ETABSModelDefinitionValidator.Core.Model
         /// <summary>Tables expected by at least one registered rule but not found in the source.</summary>
         public List<string> MissingTables { get; } = new List<string>();
 
+        /// <summary>Tables present in the workbook whose rows were deliberately not read because
+        /// the current validation profile (enabled rule categories) doesn't need them - distinct
+        /// from MissingTables, which means the table genuinely isn't in the workbook.</summary>
+        public List<string> SkippedTables { get; } = new List<string>();
+
         public List<ImportIssue> ImportIssues { get; } = new List<ImportIssue>();
 
         public bool WasTableFound(string tableName) => !MissingTables.Contains(tableName);
