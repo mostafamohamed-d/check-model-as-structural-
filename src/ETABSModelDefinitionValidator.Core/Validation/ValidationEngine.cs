@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using ETABSModelDefinitionValidator.Core.Configuration;
 using ETABSModelDefinitionValidator.Core.Logging;
@@ -75,7 +76,8 @@ namespace ETABSModelDefinitionValidator.Core.Validation
             ModelData model,
             ValidationProfileConfig config,
             IEnumerable<IValidationRule> rules,
-            IEnumerable<string> enabledCategories = null)
+            IEnumerable<string> enabledCategories = null,
+            CancellationToken cancellationToken = default)
         {
             var enabledSet = enabledCategories == null
                 ? null
@@ -87,7 +89,7 @@ namespace ETABSModelDefinitionValidator.Core.Validation
 
             var resultsByRule = new ConcurrentDictionary<int, List<ValidationResult>>();
 
-            Parallel.For(0, ruleList.Count, i =>
+            Parallel.For(0, ruleList.Count, new ParallelOptions { CancellationToken = cancellationToken }, i =>
             {
                 var rule = ruleList[i];
                 try

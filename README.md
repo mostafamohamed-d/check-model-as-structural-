@@ -36,7 +36,8 @@ src/
   ETABSModelDefinitionValidator.Excel/      ClosedXML-based importer: table detection -> normalized ModelData
   ETABSModelDefinitionValidator.Rules/      the 19 rule implementations + registry
   ETABSModelDefinitionValidator.Reporting/  console summary + CSV export
-  ETABSModelDefinitionValidator.UI/         console runner (v1) - see docs/Roadmap.md for the planned WPF dashboard
+  ETABSModelDefinitionValidator.UI/         console runner - CI/automation-friendly entry point
+  ETABSModelDefinitionValidator.UI.WinForms/ desktop dashboard: file picker, profile checkboxes, progress/cancel, summary + filterable grid, CSV export
 tests/
   ETABSModelDefinitionValidator.Tests/      xUnit tests, one class per rule group, against in-memory fixtures
 config/
@@ -53,12 +54,19 @@ Requires the .NET SDK (targets `net472` - .NET Framework 4.7.2, opens normally i
 ```powershell
 dotnet build
 dotnet test
+
+# console (CI/scripting)
 dotnet run --project src\ETABSModelDefinitionValidator.UI -- <path-to-etabs-export.xlsx> [config.json] [output.csv]
+
+# desktop UI
+dotnet run --project src\ETABSModelDefinitionValidator.UI.WinForms
 ```
 
-Exit code `0` = overall PASS/EXEMPT, `2` = overall FAIL, `1` = the run itself errored (bad file,
-config, etc.). A CSV with every result (rule, category, status, object, story, source location,
-expected/actual, message) is written alongside the console summary.
+Console exit code `0` = overall PASS/EXEMPT, `2` = overall FAIL, `1` = the run itself errored (bad
+file, config, etc.). A CSV with every result (rule, category, status, object, story, source
+location, expected/actual, message) is written alongside the console summary; the WinForms UI
+exports the same CSV format via its Export button, for whatever subset the current grid filter
+shows.
 
 ## Adding a new rule
 
@@ -84,7 +92,7 @@ No existing rule needs to change.
 
 ## Status
 
-v1 covers Phases 1-3 (foundation, Excel import, the 19 initial rules) plus a working console
-runner and CSV export. See [docs/Roadmap.md](docs/Roadmap.md) for what's next (broader material
-validation, model integrity rules, Excel/PDF report export, the WPF dashboard, and eventual
-ETABS API live validation).
+Foundation, Excel import, the 19 initial rules, a console runner, parallel rule execution,
+import table-skipping, and a WinForms desktop UI are all in place. See
+[docs/Roadmap.md](docs/Roadmap.md) for what's next (broader material validation, model integrity
+rules, Excel/PDF report export, and eventual ETABS API live validation).

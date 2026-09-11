@@ -5,6 +5,7 @@
     <Project Path="src/ETABSModelDefinitionValidator.Reporting/ETABSModelDefinitionValidator.Reporting.csproj" />
     <Project Path="src/ETABSModelDefinitionValidator.Rules/ETABSModelDefinitionValidator.Rules.csproj" />
     <Project Path="src/ETABSModelDefinitionValidator.UI/ETABSModelDefinitionValidator.UI.csproj" />
+    <Project Path="src/ETABSModelDefinitionValidator.UI.WinForms/ETABSModelDefinitionValidator.UI.WinForms.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/ETABSModelDefinitionValidator.Tests/ETABSModelDefinitionValidator.Tests.csproj" />

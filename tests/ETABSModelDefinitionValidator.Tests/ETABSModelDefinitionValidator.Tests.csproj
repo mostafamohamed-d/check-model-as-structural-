@@ -21,6 +21,7 @@
     <ProjectReference Include="..\..\src\ETABSModelDefinitionValidator.Excel\ETABSModelDefinitionValidator.Excel.csproj" />
     <ProjectReference Include="..\..\src\ETABSModelDefinitionValidator.Rules\ETABSModelDefinitionValidator.Rules.csproj" />
     <ProjectReference Include="..\..\src\ETABSModelDefinitionValidator.Reporting\ETABSModelDefinitionValidator.Reporting.csproj" />
+    <ProjectReference Include="..\..\src\ETABSModelDefinitionValidator.UI.WinForms\ETABSModelDefinitionValidator.UI.WinForms.csproj" />
   </ItemGroup>
 
 </Project>

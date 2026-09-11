@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <RootNamespace>ETABSModelDefinitionValidator.UI.WinForms</RootNamespace>
+  </PropertyGroup>
+
+  <!-- net472 (classic .NET Framework) uses plain assembly References for WinForms, not the
+       UseWindowsForms SDK property - that flag only applies to net5.0-windows+ targets. -->
+  <ItemGroup>
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Drawing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ETABSModelDefinitionValidator.Core\ETABSModelDefinitionValidator.Core.csproj" />
+    <ProjectReference Include="..\ETABSModelDefinitionValidator.Excel\ETABSModelDefinitionValidator.Excel.csproj" />
+    <ProjectReference Include="..\ETABSModelDefinitionValidator.Rules\ETABSModelDefinitionValidator.Rules.csproj" />
+    <ProjectReference Include="..\ETABSModelDefinitionValidator.Reporting\ETABSModelDefinitionValidator.Reporting.csproj" />
+  </ItemGroup>
+
+</Project>
