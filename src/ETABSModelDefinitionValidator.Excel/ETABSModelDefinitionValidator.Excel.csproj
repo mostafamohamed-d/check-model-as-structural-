@@ -1,0 +1,15 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>ETABSModelDefinitionValidator.Excel</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ClosedXML" Version="0.104.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ETABSModelDefinitionValidator.Core\ETABSModelDefinitionValidator.Core.csproj" />
+  </ItemGroup>
+
+</Project>
