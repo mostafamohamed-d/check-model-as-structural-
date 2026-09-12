@@ -55,12 +55,14 @@ namespace ETABSModelDefinitionValidator.Tests
         private readonly ValidationProfileConfig _config = ConfigurationLoader.LoadDefault();
         private readonly FrameEndOffsetRule _rule = new FrameEndOffsetRule();
 
-        private static ModelData ModelWithOffsets(double i, double j) => Model(i, j);
-
-        private static ModelData Model(double i, double j)
+        // The rule now only checks frames it can confirm are columns (cross-referenced via
+        // Concrete Column Overwrites), so every fixture that expects a check to run must also
+        // register the same UniqueName as a column there.
+        private static ModelData ModelWithOffsets(double i, double j)
         {
             var model = new ModelData();
             model.FrameEndOffsets.Add(new FrameEndOffset { Story = "ROOF LEVEL", Label = "C143", UniqueName = "7515", OffsetIMm = i, OffsetJMm = j, Source = Loc("Offsets") });
+            model.ColumnDesignOverwrites.Add(new ColumnDesignOverwrite { Story = "ROOF LEVEL", Label = "C143", UniqueName = "7515", Source = Loc("ColOver") });
             return model;
         }
 
@@ -115,6 +117,50 @@ namespace ETABSModelDefinitionValidator.Tests
 
             Assert.Single(results);
             Assert.Equal(ValidationStatus.NotChecked, results[0].Status);
+        }
+
+        [Fact]
+        public void NotChecked_WhenColumnOverwritesTableIsMissing()
+        {
+            var model = new ModelData();
+            model.FrameEndOffsets.Add(new FrameEndOffset { Story = "L1", Label = "C1", UniqueName = "1", OffsetIMm = 0, OffsetJMm = 949.7, Source = Loc("Offsets") });
+            model.MissingTables.Add(Core.KnownTables.ConcreteColumnOverwritesAci31819);
+
+            var results = _rule.Validate(model, _config).ToList();
+
+            Assert.Single(results);
+            Assert.Equal(ValidationStatus.NotChecked, results[0].Status);
+        }
+
+        [Fact]
+        public void Beam_WithNonIntegerOffset_IsNotChecked_OnlyColumnsAre()
+        {
+            var model = new ModelData();
+            // Beam B117 - not present in ColumnDesignOverwrites, so it's not a column.
+            model.FrameEndOffsets.Add(new FrameEndOffset { Story = "ROOF LEVEL", Label = "B117", UniqueName = "4666", OffsetIMm = 350, OffsetJMm = 275.1, Source = Loc("Offsets") });
+            // Column C143 - present in ColumnDesignOverwrites, so it is checked.
+            model.FrameEndOffsets.Add(new FrameEndOffset { Story = "ROOF LEVEL", Label = "C143", UniqueName = "7515", OffsetIMm = 0, OffsetJMm = 949.7, Source = Loc("Offsets") });
+            model.ColumnDesignOverwrites.Add(new ColumnDesignOverwrite { Story = "ROOF LEVEL", Label = "C143", UniqueName = "7515", Source = Loc("ColOver") });
+
+            var results = _rule.Validate(model, _config).ToList();
+
+            Assert.All(results, r => Assert.Equal("C143", r.ObjectName));
+            Assert.Equal(2, results.Count);
+        }
+
+        [Fact]
+        public void RestrictIntegerOffsetCheckToColumns_False_ChecksBeamsToo()
+        {
+            var config = ConfigurationLoader.LoadDefault();
+            config.Frames.RestrictIntegerOffsetCheckToColumns = false;
+
+            var model = new ModelData();
+            model.FrameEndOffsets.Add(new FrameEndOffset { Story = "ROOF LEVEL", Label = "B117", UniqueName = "4666", OffsetIMm = 350, OffsetJMm = 275.1, Source = Loc("Offsets") });
+
+            var results = _rule.Validate(model, config).ToList();
+
+            Assert.Equal(2, results.Count);
+            Assert.Equal(ValidationStatus.Fail, results.Single(r => r.FieldName == "Offset J").Status);
         }
     }
 }

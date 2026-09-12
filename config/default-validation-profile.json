@@ -24,7 +24,8 @@
   "Frames": {
     "RequireAutoMesh": true,
     "RequireIntegerEndOffsets": true,
-    "IntegerTolerance": 0.001
+    "IntegerTolerance": 0.001,
+    "RestrictIntegerOffsetCheckToColumns": true
   },
   "Loads": {
     "DeadPatternTypeName": "Dead",

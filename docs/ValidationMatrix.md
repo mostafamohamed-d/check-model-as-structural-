@@ -59,7 +59,7 @@ projects (Section 6 of the master prompt).
 | LOAD-001 | Load Pattern Definitions | `Type`, `Self Weight Multiplier` | Type == Dead (case-insensitive) → multiplier == 1.0 | 1.0 | non-Dead patterns not checked | CODE (self-weight physics) | FAIL |
 | LOAD-002 | Load Cases - Linear Static | `Name`, `Load Name` | Load Name equals Name exactly | equal | — | CONSISTENCY | WARNING |
 | FRAME-001 | Frame Assigns - Frame Auto Mesh | `Auto Mesh` | == Yes | Yes | — | MODELING_STANDARD | FAIL |
-| FRAME-002 | Frame Assigns - End Len Offsets | `Offset I`, `Offset J` | integral within tolerance | whole number | — | MODELING_STANDARD | FAIL |
+| FRAME-002 | Frame Assigns - End Len Offsets (+ Conc Col Over ACI 318-19 to identify columns) | `Offset I`, `Offset J` | integral within tolerance, columns only | whole number | beams (non-columns) | MODELING_STANDARD | FAIL |
 | COL-001 | Conc Col Over ACI 318-19 | `Design Section` | == Program Determined | Program Determined | — | PROJECT_STANDARD | FAIL |
 | DIA-001 | Diaphragm Definitions | `Rigidity Type` | == Semi-Rigid | Semi-Rigid | — | MODELING_STANDARD | FAIL |
 
@@ -81,6 +81,16 @@ Ordinary-catchall), these would incorrectly classify as "Ordinary" and fail SLAB
 expected-modifier profile (default `1.0` for m11/m22/m12, unchecked f-modifiers). This is a
 `MODELING_STANDARD` classification, not a code requirement — flagged `REFERENCE_PENDING` until
 confirmed as a firm project rule.
+
+### 3. FRAME-002 scope — columns only, not beams
+Spec text implied every frame's end length offsets should be whole numbers. Per explicit user
+feedback, this only holds for columns — beams routinely carry non-integer, geometry-derived
+offsets (computed rigid-zone lengths from intersecting member widths), and flagging those is a
+false positive, not a real issue. Implemented by cross-referencing each frame's `UniqueName`
+against `Concrete Column Overwrites - ACI 318-19` (which lists only columns) rather than guessing
+from the label prefix (`C...` vs `B...`) — that convention is common but not guaranteed across
+projects. Configurable via `Frames.RestrictIntegerOffsetCheckToColumns` (default `true`); set
+`false` to check every frame again.
 
 ## Naming convention (as observed — configurable, not hard-coded)
 

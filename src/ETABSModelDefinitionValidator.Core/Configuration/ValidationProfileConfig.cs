@@ -78,6 +78,11 @@ namespace ETABSModelDefinitionValidator.Core.Configuration
         public bool RequireAutoMesh { get; set; } = true;
         public bool RequireIntegerEndOffsets { get; set; } = true;
         public double IntegerTolerance { get; set; } = 0.001;
+
+        /// <summary>When true (default), FRAME-002 only checks frames identified as columns (via
+        /// Concrete Column Overwrites) - beams routinely have non-integer, geometry-derived
+        /// offsets and are not checked. Set false to check every frame regardless of type.</summary>
+        public bool RestrictIntegerOffsetCheckToColumns { get; set; } = true;
     }
 
     public sealed class LoadPatternRulesConfig
