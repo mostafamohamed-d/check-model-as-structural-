@@ -17,6 +17,7 @@
   <ItemGroup>
     <ProjectReference Include="..\ETABSModelDefinitionValidator.Core\ETABSModelDefinitionValidator.Core.csproj" />
     <ProjectReference Include="..\ETABSModelDefinitionValidator.Excel\ETABSModelDefinitionValidator.Excel.csproj" />
+    <ProjectReference Include="..\ETABSModelDefinitionValidator.EtabsApi\ETABSModelDefinitionValidator.EtabsApi.csproj" />
     <ProjectReference Include="..\ETABSModelDefinitionValidator.Rules\ETABSModelDefinitionValidator.Rules.csproj" />
     <ProjectReference Include="..\ETABSModelDefinitionValidator.Reporting\ETABSModelDefinitionValidator.Reporting.csproj" />
   </ItemGroup>

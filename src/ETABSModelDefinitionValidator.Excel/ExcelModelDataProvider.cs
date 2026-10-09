@@ -62,6 +62,25 @@ namespace ETABSModelDefinitionValidator.Excel
             {
                 var detector = new TableDetector(_logger);
                 var tables = detector.DetectTables(workbook, model.ImportIssues, _requiredTitles);
+                PopulateModel(model, tables);
+            }
+
+            return model;
+        }
+
+        /// <summary>Builds ModelData from already-extracted tables, whatever their origin (an
+        /// Excel export, or a live ETABS database-table read). This is the single place table
+        /// titles are mapped to domain objects, so every source gets identical import behaviour.</summary>
+        public static ModelData FromTables(string sourceName, IReadOnlyList<RawTable> tables, IValidationLogger logger = null)
+        {
+            var model = new ModelData { WorkbookName = sourceName };
+            new ExcelModelDataProvider(sourceName, logger).PopulateModel(model, tables);
+            return model;
+        }
+
+        private void PopulateModel(ModelData model, IReadOnlyList<RawTable> tables)
+        {
+            {
                 var byTitle = tables
                     .GroupBy(t => t.TableTitle, StringComparer.OrdinalIgnoreCase)
                     .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
@@ -126,10 +145,7 @@ namespace ETABSModelDefinitionValidator.Excel
                         model.UnrecognizedTables.Add(table.TableTitle);
                     }
                 }
-
             }
-
-            return model;
         }
 
         private void PopulateIfPresent(

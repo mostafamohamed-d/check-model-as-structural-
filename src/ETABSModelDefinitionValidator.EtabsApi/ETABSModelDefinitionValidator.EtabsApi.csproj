@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>ETABSModelDefinitionValidator.EtabsApi</RootNamespace>
+  </PropertyGroup>
+
+  <!-- Deliberately NO reference to ETABSv1.dll. The DLL is loaded at runtime from the folder of the
+       ETABS process being attached to, so one build works with ETABS 21 and 22 (their ETABSv1.dll
+       are different assembly versions with the same DatabaseTables signatures). -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="ETABSModelDefinitionValidator.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ETABSModelDefinitionValidator.Core\ETABSModelDefinitionValidator.Core.csproj" />
+    <ProjectReference Include="..\ETABSModelDefinitionValidator.Excel\ETABSModelDefinitionValidator.Excel.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,56 +1,57 @@
 using System.Windows.Forms;
+using ETABSModelDefinitionValidator.Core.Configuration;
 using ETABSModelDefinitionValidator.Core.Validation;
+using ETABSModelDefinitionValidator.Rules;
 
 namespace ETABSModelDefinitionValidator.UI.WinForms
 {
-    /// <summary>Read-only detail view of one selected ValidationResult - every field an engineer
-    /// needs to find and understand the issue, including full source traceability.</summary>
+    /// <summary>Detail view of one selected result: the finding (expected / actual / source row)
+    /// followed by the plain-language explanation of the check that produced it.</summary>
     public sealed class ResultDetailPanel : UserControl
     {
-        private readonly TextBox _text;
+        private readonly RichTextBox _box;
+        private ValidationProfileConfig _config = new ValidationProfileConfig();
 
         public ResultDetailPanel()
         {
             Dock = DockStyle.Fill;
-            _text = new TextBox
-            {
-                Dock = DockStyle.Fill,
-                Multiline = true,
-                ReadOnly = true,
-                ScrollBars = ScrollBars.Vertical,
-                Font = new System.Drawing.Font(System.Drawing.FontFamily.GenericMonospace, 9),
-                BackColor = System.Drawing.SystemColors.Window
-            };
-            Controls.Add(_text);
+            Padding = new Padding(8);
+            _box = ExplanationWriter.NewBox();
+            Controls.Add(_box);
         }
+
+        public void SetConfig(ValidationProfileConfig config) => _config = config ?? new ValidationProfileConfig();
 
         public void SetResult(ValidationResult r)
         {
-            if (r == null)
+            _box.Clear();
+            if (r == null) return;
+
+            ExplanationWriter.Title(_box, $"{r.Status.ToString().ToUpperInvariant()}  -  {r.RuleId}  {r.RuleName}", SummaryPanel.ColorForStatus(r.Status));
+
+            ExplanationWriter.Section(_box, "Finding",
+                $"{r.ObjectType} '{r.ObjectName}'" + (string.IsNullOrEmpty(r.Story) ? "" : $"  (story {r.Story})") + "\n" +
+                (string.IsNullOrEmpty(r.FieldName) ? "" : $"Field:     {r.FieldName}\n") +
+                (r.ExpectedValue != null ? $"Expected:  {r.ExpectedValue}\n" : "") +
+                (r.ActualValue != null ? $"Actual:    {r.ActualValue}\n" : "") +
+                $"\n{r.Message}");
+
+            ExplanationWriter.Section(_box, "Technical explanation", r.TechnicalExplanation);
+            if (r.CodeBasis != null) ExplanationWriter.Section(_box, "Code reference", r.CodeBasis.ToString());
+
+            var e = RuleCatalog.Find(r.RuleId, _config);
+            if (e != null)
             {
-                _text.Text = string.Empty;
-                return;
+                _box.AppendText("\n------------------------------------------------------------\n");
+                ExplanationWriter.Explanation(_box, e);
             }
 
-            _text.Text =
-                $"{r.Status}\r\n\r\n" +
-                $"Rule ID:     {r.RuleId}\r\n" +
-                $"Rule Name:   {r.RuleName}\r\n" +
-                $"Category:    {r.Category}\r\n" +
-                $"Rule Type:   {r.RuleType}\r\n" +
-                $"Severity:    {r.Severity}\r\n\r\n" +
-                $"Object:      {r.ObjectType} '{r.ObjectName}'\r\n" +
-                (string.IsNullOrEmpty(r.Story) ? "" : $"Story:       {r.Story}\r\n") +
-                (string.IsNullOrEmpty(r.FieldName) ? "" : $"Field:       {r.FieldName}\r\n") + "\r\n" +
-                (r.ExpectedValue != null ? $"Expected:    {r.ExpectedValue}\r\n" : "") +
-                (r.ActualValue != null ? $"Actual:      {r.ActualValue}\r\n" : "") + "\r\n" +
-                $"Message:\r\n{r.Message}\r\n\r\n" +
-                (string.IsNullOrEmpty(r.TechnicalExplanation) ? "" : $"Technical explanation:\r\n{r.TechnicalExplanation}\r\n\r\n") +
-                (r.CodeBasis != null ? $"Code basis:  {r.CodeBasis}\r\n\r\n" : "") +
-                $"Source:\r\n  Workbook:  {r.Source?.WorkbookName}\r\n" +
-                $"  Worksheet: {r.Source?.WorksheetName}\r\n" +
-                $"  Table:     {r.Source?.TableName}\r\n" +
-                $"  Row:       {r.Source?.RowNumber}\r\n";
+            ExplanationWriter.Section(_box, "Where to find it",
+                $"Workbook:  {r.Source?.WorkbookName}\nWorksheet: {r.Source?.WorksheetName}\nTable:     {r.Source?.TableName}\nRow:       {r.Source?.RowNumber}\n" +
+                $"Severity:  {r.Severity}");
+
+            _box.SelectionStart = 0;
+            _box.ScrollToCaret();
         }
     }
 }
