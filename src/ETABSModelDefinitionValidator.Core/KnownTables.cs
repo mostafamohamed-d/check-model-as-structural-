@@ -28,10 +28,16 @@ namespace ETABSModelDefinitionValidator.Core
         public const string FloorObjectConnectivity = "Floor Object Connectivity";
         public const string ColumnObjectConnectivity = "Column Object Connectivity";
         public const string BeamObjectConnectivity = "Beam Object Connectivity";
+        /// <summary>Fields (ETABS 22.3 live): UniqueName | Story | BraceBay | UniquePtI | UniquePtJ | Length | GUID.
+        /// ETABS lists only tables that hold data, so a model without braces has no such table.</summary>
+        public const string BraceObjectConnectivity = "Brace Object Connectivity";
         public const string LinkObjectConnectivity = "Link Object Connectivity";
         public const string JointAssignmentsRestraints = "Joint Assignments - Restraints";
         public const string AreaLoadAssignmentsUniformLoadSets = "Area Load Assignments - Uniform Load Sets";
         public const string TowerAndBaseStoryDefinitions = "Tower and Base Story Definitions";
+
+        /// <summary>Tables ETABS omits entirely when the model has no such objects - their absence is normal, not an import problem.</summary>
+        public static readonly string[] OmittedWhenEmpty = { BraceObjectConnectivity };
 
         public static readonly string[] RequiredForInitialRuleSet =
         {

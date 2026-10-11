@@ -58,11 +58,12 @@ namespace ETABSModelDefinitionValidator.Core.Model
     public enum FrameKind
     {
         Column,
-        Beam
+        Beam,
+        Brace
     }
 
-    /// <summary>Normalized row from "Column Object Connectivity" or "Beam Object Connectivity". Which table
-    /// the row came from is ETABS's own design orientation - a leaning column is still a column.</summary>
+    /// <summary>Normalized row from "Column/Beam/Brace Object Connectivity". Which table the row came
+    /// from is ETABS's own design orientation; an inclined frame drawn as a column can end up a Brace.</summary>
     public sealed class FrameObject : ModelObjectBase
     {
         public string UniqueName { get; set; }

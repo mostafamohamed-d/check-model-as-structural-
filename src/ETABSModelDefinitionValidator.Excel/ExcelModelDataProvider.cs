@@ -154,6 +154,8 @@ namespace ETABSModelDefinitionValidator.Excel
                     (t, m) => PopulateFrames(t, m, "ColumnBay", FrameKind.Column));
                 PopulateIfPresent(byTitle, KnownTables.BeamObjectConnectivity, model, recognized,
                     (t, m) => PopulateFrames(t, m, "BeamBay", FrameKind.Beam));
+                PopulateIfPresent(byTitle, KnownTables.BraceObjectConnectivity, model, recognized,
+                    (t, m) => PopulateFrames(t, m, "BraceBay", FrameKind.Brace));
                 PopulateIfPresent(byTitle, KnownTables.LinkObjectConnectivity, model, recognized,
                     (t, m) => PopulateLinks(t, m));
                 PopulateIfPresent(byTitle, KnownTables.JointAssignmentsRestraints, model, recognized,

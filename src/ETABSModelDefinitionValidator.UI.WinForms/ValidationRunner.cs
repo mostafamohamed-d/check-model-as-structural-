@@ -71,7 +71,7 @@ namespace ETABSModelDefinitionValidator.UI.WinForms
                     var session = attached = EtabsSession.Attach(etabsProcessId);
                     progress?.Report($"Reading tables from '{session.ModelName}' (ETABS pid {session.ProcessId})...");
                     // Unrestricted (all categories) still means "every table the rule set uses".
-                    return new EtabsModelDataProvider(session, tables ?? RuleRegistry.AllRules.SelectMany(r => r.ApplicableTables).Distinct(StringComparer.OrdinalIgnoreCase).ToList(), logger, liveData);
+                    return new EtabsModelDataProvider(session, tables ?? RuleTables.ToRead(RuleRegistry.AllRules), logger, liveData);
                 },
                 null, config, enabledCategories, progress, cancellationToken, logger).ConfigureAwait(false);
             run.EtabsProcessId = attached?.ProcessId;
@@ -152,7 +152,7 @@ namespace ETABSModelDefinitionValidator.UI.WinForms
                 // cost - for Excel via restrictToTables, for ETABS by never requesting the table.
                 IEnumerable<string> requiredTables = enabledSet == null
                     ? null
-                    : effectiveRules.SelectMany(r => r.ApplicableTables).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                    : RuleTables.ToRead(effectiveRules);
 
                 if (loadingMessage != null) progress?.Report(loadingMessage);
                 var liveData = effectiveRules.OfType<IRequiresLiveData>().Aggregate(LiveData.None, (all, r) => all | r.RequiredLiveData);

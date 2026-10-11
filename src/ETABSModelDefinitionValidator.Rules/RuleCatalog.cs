@@ -302,13 +302,17 @@ namespace ETABSModelDefinitionValidator.Rules
                 new RuleExplanation
                 {
                     RuleId = RuleIds.Geo002, Title = "Columns are plumb", Category = Categories.Geometry,
-                    Type = RuleType.ModelIntegrity, Table = $"{KnownTables.ColumnObjectConnectivity} + {KnownTables.PointObjectConnectivity}",
-                    WhatItChecks = "For every ETABS column (design orientation Column), both end joints must have exactly the same X and the same Y. dX and dY are reported but never decide the verdict.",
-                    WhyItMatters = "A column that leans carries its load down a leaning path and adds a horizontal thrust no one designed for. Off-plumb columns usually come from snapping to the wrong grid at one level.",
-                    PassCondition = "dX = 0 and dY = 0 (no tolerance). A live run uses exact joint coordinates from the ETABS API, not the rounded table values.",
-                    HowToFix = "Move the off-grid joint back onto the column line. The group VChk_ColumnPlumb selects each failing column and its two joints.",
+                    Type = RuleType.ModelIntegrity, Table = $"{KnownTables.ColumnObjectConnectivity} + {KnownTables.PointObjectConnectivity} (+ {KnownTables.BraceObjectConnectivity} when present)",
+                    WhatItChecks = "For every ETABS column (design orientation Column), both end joints must have exactly the same X and the same Y. dX and dY are reported but never decide the verdict. " +
+                                   "Also: every column or brace whose label starts with a brace prefix (default \"D\") is reported as a WARNING with its angle from vertical.",
+                    WhyItMatters = "A column that leans carries its load down a leaning path and adds a horizontal thrust no one designed for. Off-plumb columns usually come from snapping to the wrong grid at one level. " +
+                                   "Moved far enough off vertical, ETABS turns the column into a brace (label D...), so it drops out of the column table and the plumb test - the label warning catches it.",
+                    PassCondition = "dX = 0 and dY = 0 (no tolerance). A live run uses exact joint coordinates from the ETABS API, not the rounded table values. A D-labelled frame is never PASS: it is a WARNING for the engineer to confirm.",
+                    HowToFix = "Move the off-grid joint back onto the column line. The group VChk_ColumnPlumb selects each failing column and its two joints (D-label warnings are not grouped). " +
+                               "For a D-labelled frame meant as a column, make it vertical so ETABS classifies it as a column again; a real brace needs no action.",
                     Basis = "Modelling integrity.",
-                    EngineerNote = "\"Column\" means what ETABS calls a column, not a geometric test - so this finds leaning columns, and braces are never flagged. Intentionally raked columns fail by design."
+                    EngineerNote = "\"Column\" means what ETABS calls a column, not a geometric test - so this finds leaning columns. Intentionally raked columns fail by design. " +
+                                   "Braces are not plumb-checked; only their label is reported, so genuine bracing shows as warnings to confirm. The prefix list is Geometry.BraceLabelPrefixes."
                 },
                 new RuleExplanation
                 {
@@ -577,11 +581,12 @@ namespace ETABSModelDefinitionValidator.Rules
                     "None.",
                     "Deliberately sloped walls with correct local axes."),
                 [RuleIds.Geo002] = (
-                    "Every object ETABS designates as a column.",
+                    "Every object ETABS designates as a column; plus every column or brace labelled with a brace prefix (" +
+                        string.Join(", ", c.Geometry.BraceLabelPrefixes ?? new List<string>()) + ").",
                     NotACode + "model integrity (load path).",
                     "Exact: dX = dY = 0 (live runs use exact API coordinates).",
                     "HIGH: unintended lean adds unaccounted horizontal thrust.",
-                    "Braces are never checked.",
+                    "Braces are not plumb-checked; a brace-prefixed label is only reported as a WARNING.",
                     "Intentionally raked columns, confirmed case by case."),
                 [RuleIds.Geo003] = (
                     "Every exactly plumb column.",

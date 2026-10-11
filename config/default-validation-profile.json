@@ -47,7 +47,8 @@
   "Geometry": {
     "CoordinateToleranceMm": 0.0,
     "PierAdjacencyToleranceMm": 20.0,
-    "FoundationModelNameTokens": [ "fnd" ]
+    "FoundationModelNameTokens": [ "fnd" ],
+    "BraceLabelPrefixes": [ "D" ]
   },
   "Reporting": {
     "ReviewSeverity": "High",

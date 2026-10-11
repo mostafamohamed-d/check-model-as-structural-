@@ -181,8 +181,11 @@ namespace ETABSModelDefinitionValidator.Rules
     /// tolerance. dX/dY are reported so the size of the error is visible, but never decide the verdict.
     /// "Column" is ETABS's design orientation (the Column Object Connectivity table), not geometry:
     /// this check exists to find columns that are NOT vertical, and a geometric definition would hide them.
+    /// A column moved off vertical far enough becomes a brace in ETABS (label "D..." in the Brace table),
+    /// where the plumb test above never sees it - so every column or brace whose label starts with a
+    /// configured prefix (default "D") is reported as a WARNING with its lean, for the engineer to decide.
     /// </summary>
-    public sealed class ColumnPlumbRule : IValidationRule
+    public sealed class ColumnPlumbRule : IValidationRule, IUsesOptionalTables
     {
         public string RuleId => RuleIds.Geo002;
         public string Name => "Column plumb (both joints at the same X and Y)";
@@ -190,6 +193,9 @@ namespace ETABSModelDefinitionValidator.Rules
         public RuleType Type => RuleType.ModelIntegrity;
         public Severity DefaultSeverity => Severity.High;
         public IReadOnlyList<string> ApplicableTables => new[] { KnownTables.ColumnObjectConnectivity, KnownTables.PointObjectConnectivity };
+
+        /// <summary>Absent in every model without braces, so never required for a complete run.</summary>
+        public IReadOnlyList<string> OptionalTables => new[] { KnownTables.BraceObjectConnectivity };
 
         public IEnumerable<ValidationResult> Validate(ModelData model, ValidationProfileConfig config)
         {
@@ -230,7 +236,61 @@ namespace ETABSModelDefinitionValidator.Rules
                     expected: "dX = 0, dY = 0", actual: $"dX = {dx:0.####}, dY = {dy:0.####} mm"));
             }
 
+            results.AddRange(BraceLabelled(model, config, points));
             return results;
+        }
+
+        private IEnumerable<ValidationResult> BraceLabelled(ModelData model, ValidationProfileConfig config, Dictionary<string, PointObject> points)
+        {
+            var prefixes = (config.Geometry.BraceLabelPrefixes ?? new List<string>()).Where(p => !string.IsNullOrWhiteSpace(p)).ToList();
+            if (prefixes.Count == 0) yield break;
+            var prefixText = string.Join("/", prefixes.Select(p => $"'{p}'"));
+
+            var state = model.GetTableReport(KnownTables.BraceObjectConnectivity)?.State;
+            if (state == TableImportState.FailedToRead || state == TableImportState.SchemaInvalid || state == TableImportState.Ambiguous)
+            {
+                yield return ValidationResult.Create(RuleId, Name, Category, Type, Severity.Medium, ValidationStatus.NotChecked,
+                    "Table", KnownTables.BraceObjectConnectivity, SourceLocation.Unknown,
+                    message: $"'{KnownTables.BraceObjectConnectivity}' {model.TableProblem(KnownTables.BraceObjectConnectivity)}, so frames labelled {prefixText} (columns ETABS turned into braces) were not checked.");
+                yield break;
+            }
+
+            var flagged = model.FrameObjects
+                .Where(f => (f.Kind == FrameKind.Column || f.Kind == FrameKind.Brace) &&
+                            f.Label != null && prefixes.Any(p => f.Label.StartsWith(p, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+
+            foreach (var frame in flagged)
+            {
+                var kind = frame.Kind == FrameKind.Brace ? "Brace" : "Column";
+                var name = GeometryCheck.NameOf(frame.Label, frame.UniqueName);
+                var refs = GeometryCheck.Refs(frames: new[] { frame.UniqueName }, points: new[] { frame.PointI, frame.PointJ });
+                var what = frame.Kind == FrameKind.Brace
+                    ? "ETABS treats it as a brace (an inclined frame), so it is not in the column table and is not checked as a column"
+                    : "it is in the column table but carries a brace label";
+
+                string lean, actual;
+                if (points.TryGetValue(frame.PointI ?? "", out var i) && points.TryGetValue(frame.PointJ ?? "", out var j))
+                {
+                    var dx = Math.Abs(j.X - i.X);
+                    var dy = Math.Abs(j.Y - i.Y);
+                    var dz = Math.Abs(j.Z - i.Z);
+                    var plan = Math.Sqrt(dx * dx + dy * dy);
+                    var angle = Math.Atan2(plan, dz) * 180.0 / Math.PI; // 0 = vertical, 90 = horizontal
+                    lean = $"dX = {dx:0.####} mm, dY = {dy:0.####} mm over a height of {dz:0.###} mm ({angle:0.##}° from vertical)";
+                    actual = $"{frame.Label}: {angle:0.##}° from vertical";
+                }
+                else
+                {
+                    lean = $"its end joints ({frame.PointI} / {frame.PointJ}) are not in '{KnownTables.PointObjectConnectivity}', so the lean could not be measured";
+                    actual = frame.Label;
+                }
+
+                yield return GeometryCheck.Result(this, ValidationStatus.Warning, kind, name, frame.Story, frame.Source,
+                    $"{kind} {frame.Display} is labelled '{frame.Label}' - {what}. If it is meant to be a column it is not plumb: {lean}. " +
+                    "If it is a real brace, no action is needed.", refs,
+                    expected: $"Column label (not {prefixText}...), plumb", actual: actual);
+            }
         }
     }
 

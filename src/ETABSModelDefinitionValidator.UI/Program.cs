@@ -119,7 +119,7 @@ namespace ETABSModelDefinitionValidator.UI
             // Optional third argument: ';'-separated table titles to probe instead of the rule set's tables.
             var titles = args.Length > 2
                 ? args[2].Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
-                : RuleRegistry.AllRules.SelectMany(r => r.ApplicableTables).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+                : RuleTables.ToRead(RuleRegistry.AllRules).ToArray();
             Console.WriteLine(EtabsProbe.Run(session, titles));
             return 0;
         }
@@ -157,7 +157,7 @@ namespace ETABSModelDefinitionValidator.UI
             var before = session.PresentUnitsName();
             var rules = RuleRegistry.AllRules.Where(r => FailureGroups.For(r.RuleId) != null).ToList();
             var watch = System.Diagnostics.Stopwatch.StartNew();
-            var model = new EtabsModelDataProvider(session, rules.SelectMany(r => r.ApplicableTables).Distinct().ToList(),
+            var model = new EtabsModelDataProvider(session, RuleTables.ToRead(rules),
                 liveData: LiveData.LoadAssignments).GetModelData();
             Console.WriteLine($"Read in {watch.Elapsed.TotalSeconds:0.0} s: {model.PointObjects.Count:N0} joints, {model.WallObjects.Count:N0} walls, {model.FloorObjects.Count:N0} floors, " +
                               $"{model.FrameObjects.Count:N0} frames, {model.LinkObjects.Count:N0} links, {model.JointRestraints.Count:N0} restraints, base {model.BaseElevationMm} mm");

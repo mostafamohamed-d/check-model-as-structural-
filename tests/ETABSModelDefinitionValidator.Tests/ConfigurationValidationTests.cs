@@ -22,6 +22,20 @@ namespace ETABSModelDefinitionValidator.Tests
             Assert.Throws<InvalidConfigurationException>(() => ConfigurationValidator.EnsureValid(c));
         }
 
+        [Fact]
+        public void Blank_brace_label_prefix_is_rejected_because_it_would_match_every_frame()
+        {
+            var c = Valid(); c.Geometry.BraceLabelPrefixes = new System.Collections.Generic.List<string> { "D", " " };
+            AssertError(c, "Geometry.BraceLabelPrefixes");
+        }
+
+        [Fact]
+        public void Default_brace_label_prefix_is_D()
+        {
+            Assert.Equal(new[] { "D" }, Valid().Geometry.BraceLabelPrefixes);
+            Assert.Equal(new[] { "D" }, ConfigurationLoader.LoadFromFile(CorruptedImportTests.ConfigPath()).Geometry.BraceLabelPrefixes);
+        }
+
         // ---- the profiles we ship are valid --------------------------------------------------------
 
         [Fact]

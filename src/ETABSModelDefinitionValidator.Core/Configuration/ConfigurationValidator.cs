@@ -142,6 +142,9 @@ namespace ETABSModelDefinitionValidator.Core.Configuration
             // --- Geometry --------------------------------------------------------------------------
             if (c.Geometry.CoordinateToleranceMm < 0) Error("Geometry.CoordinateToleranceMm", "Must be >= 0.");
             if (c.Geometry.PierAdjacencyToleranceMm < 0) Error("Geometry.PierAdjacencyToleranceMm", "Must be >= 0.");
+            // An empty prefix would match every frame label and flag every column as a brace.
+            if (c.Geometry.BraceLabelPrefixes != null && c.Geometry.BraceLabelPrefixes.Any(string.IsNullOrWhiteSpace))
+                Error("Geometry.BraceLabelPrefixes", "Prefixes must not be blank - a blank prefix matches every frame label.");
 
             // --- Reporting -------------------------------------------------------------------------
             if (!Enum.TryParse(c.Reporting.ReviewSeverity ?? "", true, out Severity sev) || !Enum.IsDefined(typeof(Severity), sev) ||

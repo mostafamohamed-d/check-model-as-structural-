@@ -35,6 +35,7 @@ Titles and headers verified live against ETABS 22.3 with `--etabs-probe` (no ref
 | Point Object Connectivity | `UniqueName`, `Story`, `PointBay`, `X`, `Y`, `Z` |
 | Wall Object Connectivity / Floor Object Connectivity | `UniqueName`, `Story`, `WallBay`/`FloorBay`, `UniquePt1..4` |
 | Column Object Connectivity / Beam Object Connectivity | `Unique Name`, `Story`, `ColumnBay`/`BeamBay`, `UniquePtI`, `UniquePtJ` |
+| Brace Object Connectivity (optional - ETABS omits it when the model has no braces) | `UniqueName`, `Story`, `BraceBay`, `UniquePtI`, `UniquePtJ` (verified live, ETABS 22.3) |
 | Link Object Connectivity | `Name`, `Story`, `UniquePt1`, `UniquePt2` |
 | Area Assignments - Pier Labels | `Story`, `Label`, `UniqueName`, `Pier Name` |
 | Joint Assignments - Restraints | `Story`, `Label`, `UniqueName`, `UX`..`RZ` (Yes/No) |
@@ -84,7 +85,7 @@ projects (Section 6 of the master prompt).
 | COL-001 | Conc Col Over ACI 318-19 | `Design Section` | == Program Determined | Program Determined | — | PROJECT_STANDARD | FAIL |
 | DIA-001 | Diaphragm Definitions | `Rigidity Type` | == Semi-Rigid | Semi-Rigid | — | MODELING_STANDARD | FAIL |
 | GEO-001 | Wall Object Connectivity + Point Object Connectivity | `UniquePt1..4`, `X/Y/Z` | 4 corners, 2 Z levels (2/2), top edge over bottom edge in plan | vertical quad | — (tolerance `Geometry.CoordinateToleranceMm`, 0) | MODELING_STANDARD | FAIL |
-| GEO-002 | Column Object Connectivity + Point Object Connectivity | `UniquePtI/J`, `X/Y` | X and Y of both joints equal, no tolerance | dX = dY = 0 | joint missing → WARNING | MODEL_INTEGRITY | FAIL |
+| GEO-002 | Column Object Connectivity + Point Object Connectivity (+ Brace Object Connectivity, optional) | `UniquePtI/J`, `X/Y`, `ColumnBay/BraceBay` | X and Y of both joints equal, no tolerance; label starting with `Geometry.BraceLabelPrefixes` (default `D`) → WARNING with angle from vertical | dX = dY = 0 | joint missing → WARNING; brace table absent is normal (ETABS omits it without braces), never INCOMPLETE | MODEL_INTEGRITY | FAIL |
 | GEO-003 | Column/Beam/Link/Wall/Floor Object Connectivity, Point Object Connectivity, Tower and Base Story Definitions | joint names | lower joint of each exactly plumb column = top joint of another plumb column (identity, not coordinates) | column below | founded at base level; tied by a link to another column | MODEL_INTEGRITY | FAIL |
 | GEO-004 | Area Assignments - Pier Labels + Wall Object Connectivity + Point Object Connectivity | `Pier Name`, corners | panels of one (story, pier) form one connected group in plan | 1 group | adjacency within `Geometry.PierAdjacencyToleranceMm` (20) | MODEL_INTEGRITY | FAIL |
 | SUP-001 | Joint Assignments - Restraints + Point Object Connectivity | `UX..RZ`, `Z` | restrained joint at the lowest joint Z | lowest floor | foundation model (`fnd` in file name) → no restraint at all; table absent → NOT_CHECKED | MODEL_INTEGRITY | FAIL |

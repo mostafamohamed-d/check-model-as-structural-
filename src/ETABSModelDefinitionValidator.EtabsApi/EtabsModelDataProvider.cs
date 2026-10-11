@@ -140,6 +140,16 @@ namespace ETABSModelDefinitionValidator.EtabsApi
 
             foreach (var title in notFound)
             {
+                if (Core.KnownTables.OmittedWhenEmpty.Contains(title, StringComparer.OrdinalIgnoreCase))
+                {
+                    model.ImportIssues.Add(new ImportIssue
+                    {
+                        Level = ImportIssueLevel.Info,
+                        Message = $"ETABS does not list '{title}' - it lists only tables that hold data, so the model has no such objects.",
+                        Source = new SourceLocation { WorkbookName = model.WorkbookName, WorksheetName = ApiTableConverter.WorksheetLabel, TableName = title, RowNumber = -1 }
+                    });
+                    continue;
+                }
                 model.ImportIssues.Add(new ImportIssue
                 {
                     Level = ImportIssueLevel.Warning,

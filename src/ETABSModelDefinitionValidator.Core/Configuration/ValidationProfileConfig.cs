@@ -144,6 +144,11 @@ namespace ETABSModelDefinitionValidator.Core.Configuration
         /// <summary>SUP-001: a model whose file name contains any of these (case-insensitive) is a
         /// foundation model - the raft sits on springs, so no joint may be restrained.</summary>
         public List<string> FoundationModelNameTokens { get; set; } = new List<string> { "fnd" };
+
+        /// <summary>GEO-002: a column or brace frame whose label starts with any of these (case-insensitive)
+        /// is reported as a WARNING - ETABS labels an inclined frame "D" (brace), so a column drawn
+        /// slightly off-vertical shows up here instead of in the column table.</summary>
+        public List<string> BraceLabelPrefixes { get; set; } = new List<string> { "D" };
     }
 
     /// <summary>

@@ -36,6 +36,13 @@ namespace ETABSModelDefinitionValidator.Tests
             return this;
         }
 
+        /// <summary>A frame from the Brace Object Connectivity table; ETABS labels these "D...".</summary>
+        public Geo Brace(string label, string name, string i, string j, string story = "S")
+        {
+            Model.FrameObjects.Add(new FrameObject { UniqueName = name, Label = label, Story = story, Kind = FrameKind.Brace, PointI = i, PointJ = j, Source = Loc(KnownTables.BraceObjectConnectivity) });
+            return this;
+        }
+
         public Geo Link(string name, string p1, string p2)
         {
             Model.LinkObjects.Add(new LinkObject { Name = name, Point1 = p1, Point2 = p2 });
@@ -150,6 +157,84 @@ namespace ETABSModelDefinitionValidator.Tests
             var model = new ModelData();
             model.MissingTables.Add(KnownTables.ColumnObjectConnectivity);
             Assert.Equal(ValidationStatus.NotChecked, Run(new ColumnPlumbRule(), model).Single().Status);
+        }
+
+        /// <summary>Live case (BHAD-EB-V22.3-REV75): D31 @ LEVEL +7.25 is in the Brace table, ~2.6 m long -
+        /// invisible to the plumb test, so it must be reported by its label.</summary>
+        [Fact]
+        public void ColumnPlumb_Warns_ForBraceLabelledD_WithItsAngle_AndStillChecksColumns()
+        {
+            var g = new Geo().Point("1", 0, 0, 0).Point("2", 0, 0, 3000).Column("C", "1", "2")
+                             .Point("3", 0, 0, 0).Point("4", 1000, 0, 1000).Brace("D31", "669", "3", "4", "LEVEL +7.25");
+
+            var results = Run(new ColumnPlumbRule(), g.Model);
+
+            Assert.Equal(ValidationStatus.Pass, results.Single(r => r.ObjectName == "CC").Status);
+            var d = results.Single(r => r.ObjectName == "D31");
+            Assert.Equal(ValidationStatus.Warning, d.Status);
+            Assert.Equal("Brace", d.ObjectType);
+            Assert.Contains("45° from vertical", d.Message);
+            Assert.Equal(new[] { "669" }, d.Objects.Frames);
+        }
+
+        [Fact]
+        public void ColumnPlumb_Warns_ForColumnTableFrameLabelledD_AlongsideItsPlumbResult()
+        {
+            var g = new Geo().Point("1", 0, 0, 0).Point("2", 0, 0, 3000);
+            g.Model.FrameObjects.Add(new FrameObject { UniqueName = "7", Label = "D7", Story = "S", Kind = FrameKind.Column, PointI = "1", PointJ = "2", Source = Loc(KnownTables.ColumnObjectConnectivity) });
+
+            var results = Run(new ColumnPlumbRule(), g.Model);
+
+            Assert.Equal(new[] { ValidationStatus.Pass, ValidationStatus.Warning }, results.Select(r => r.Status));
+        }
+
+        [Fact]
+        public void ColumnPlumb_IgnoresBracesWithoutTheLabelPrefix_AndHonoursConfiguredPrefixes()
+        {
+            var g = new Geo().Point("1", 0, 0, 0).Point("2", 500, 0, 3000).Brace("BR1", "9", "1", "2");
+            Assert.Empty(Run(new ColumnPlumbRule(), g.Model));
+
+            _config.Geometry.BraceLabelPrefixes = new List<string> { "BR" };
+            Assert.Equal(ValidationStatus.Warning, Run(new ColumnPlumbRule(), g.Model).Single().Status);
+        }
+
+        [Fact]
+        public void ColumnPlumb_NotChecked_ForTheLabelPart_WhenBraceTableCouldNotBeRead()
+        {
+            var g = new Geo().Point("1", 0, 0, 0).Point("2", 0, 0, 3000).Column("C", "1", "2");
+            g.Model.TableReports[KnownTables.BraceObjectConnectivity] = new TableImportReport { Title = KnownTables.BraceObjectConnectivity, State = TableImportState.FailedToRead };
+
+            var results = Run(new ColumnPlumbRule(), g.Model);
+
+            Assert.Equal(ValidationStatus.Pass, results[0].Status);
+            Assert.Equal(ValidationStatus.NotChecked, results[1].Status);
+            Assert.Contains(KnownTables.BraceObjectConnectivity, results[1].Message);
+        }
+
+        /// <summary>Most models have no braces and ETABS then returns no Brace table at all: that must not make
+        /// GEO-002 or the run verdict incomplete, and the brace table must still be requested from the source.</summary>
+        [Fact]
+        public void ColumnPlumb_ModelWithoutBraceTable_RunVerdictUnaffected_ButBraceTableIsStillRead()
+        {
+            ETABSModelDefinitionValidator.Excel.RawTable T(string title, string[] fields, params string[] data) =>
+                ETABSModelDefinitionValidator.EtabsApi.ApiTableConverter.Convert(title, fields, fields.ToDictionary(f => f, f => f), data.Length / fields.Length, data);
+            var tables = new List<ETABSModelDefinitionValidator.Excel.RawTable>
+            {
+                T(KnownTables.PointObjectConnectivity, new[] { "UniqueName", "Is Auto Point", "Story", "PointBay", "IsSpecial", "X", "Y", "Z", "GUID" },
+                    "1", "No", "S", "1", "No", "0", "0", "0", "g", "2", "No", "S", "2", "No", "0", "0", "3000", "g"),
+                T(KnownTables.ColumnObjectConnectivity, new[] { "Unique Name", "Story", "ColumnBay", "UniquePtI", "UniquePtJ", "Length", "GUID" },
+                    "10", "S", "C1", "1", "2", "3000", "g")
+            };
+            var model = ETABSModelDefinitionValidator.Excel.ExcelModelDataProvider.FromTables("live", tables);
+            var rule = new ColumnPlumbRule();
+
+            var results = Run(rule, model);
+            var assessment = RunAssessment.Evaluate(results, model, new IValidationRule[] { rule });
+
+            Assert.Equal(ValidationStatus.Pass, results.Single().Status);
+            Assert.Equal(RunVerdict.Pass, assessment.Verdict);
+            Assert.DoesNotContain(KnownTables.BraceObjectConnectivity, rule.ApplicableTables);
+            Assert.Contains(KnownTables.BraceObjectConnectivity, RuleTables.ToRead(new IValidationRule[] { rule }));
         }
 
         // --- GEO-003 column continuity -------------------------------------------------------
