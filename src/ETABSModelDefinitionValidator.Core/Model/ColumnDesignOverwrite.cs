@@ -6,8 +6,6 @@ namespace ETABSModelDefinitionValidator.Core.Model
         public string Story { get; set; }
         public string Label { get; set; }
         public string UniqueName { get; set; }
-        public string DesignType { get; set; }
         public string DesignSection { get; set; }
-        public string FrameType { get; set; }
     }
 }

@@ -21,10 +21,7 @@ namespace ETABSModelDefinitionValidator.Rules
         {
             if (!model.WasTableFound(KnownTables.DiaphragmDefinitions))
             {
-                yield return ValidationResult.Create(
-                    RuleId, Name, Category, Type, Severity.Medium, ValidationStatus.NotChecked,
-                    "Table", KnownTables.DiaphragmDefinitions, SourceLocation.Unknown,
-                    message: "Required ETABS table was not found in the workbook. Rule could not be evaluated.");
+                yield return RuleResults.TableNotUsable(this, KnownTables.DiaphragmDefinitions);
                 yield break;
             }
 

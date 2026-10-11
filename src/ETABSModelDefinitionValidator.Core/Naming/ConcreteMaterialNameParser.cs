@@ -31,8 +31,8 @@ namespace ETABSModelDefinitionValidator.Core.Naming
             {
                 Success = true,
                 RawName = name,
-                FcMpa = double.Parse(match.Groups["fc"].Value),
-                IsTimeDependentVariant = match.Groups["td"].Success
+                // Invariant: the name always uses '.', whatever the Windows decimal separator is.
+                FcMpa = double.Parse(match.Groups["fc"].Value, System.Globalization.CultureInfo.InvariantCulture)
             };
         }
     }

@@ -9,36 +9,46 @@ namespace ETABSModelDefinitionValidator.UI.WinForms
     /// Checks Explained tab read the same way.</summary>
     internal static class ExplanationWriter
     {
+        private static readonly Font HeadingFont = Theme.DisplayStrong(10.5f);
+        private static readonly Font TitleFont = Theme.DisplayStrong(15f);
+
         public static RichTextBox NewBox() => new RichTextBox
         {
             Dock = DockStyle.Fill,
             ReadOnly = true,
             BorderStyle = BorderStyle.None,
-            BackColor = Color.White,
+            BackColor = Theme.Surface,
             Font = new Font("Segoe UI", 9.5f),
             DetectUrls = false
         };
 
         public static void Title(RichTextBox box, string text, Color color)
         {
-            Append(box, text + "\n", new Font("Segoe UI", 13f, FontStyle.Bold), color);
+            Append(box, text + "\n", TitleFont, color);
         }
 
         public static void Section(RichTextBox box, string heading, string body)
         {
             if (string.IsNullOrWhiteSpace(body)) return;
-            Append(box, "\n" + heading + "\n", new Font("Segoe UI", 9.5f, FontStyle.Bold), Color.FromArgb(40, 70, 120));
-            Append(box, body + "\n", box.Font, Color.Black);
+            Append(box, (box.TextLength == 0 ? "" : "\n") + heading + "\n", HeadingFont, Theme.AccentDark);
+            Append(box, body + "\n", box.Font, Theme.Ink);
         }
 
         public static void Explanation(RichTextBox box, RuleExplanation e)
         {
+            Section(box, "Authority", e.Authority);
             Section(box, "What this check does", e.WhatItChecks);
-            Section(box, "Why it matters (engineering)", e.WhyItMatters);
+            Section(box, "Applies to", e.Applicability);
+            Section(box, "Why it matters", e.WhyItMatters);
             Section(box, "Passes when", e.PassCondition);
-            Section(box, "If it does not pass", e.HowToFix);
-            Section(box, "Basis - " + TypeLabel(e.Type), e.Basis);
-            Section(box, "Engineer's note / limits of this check", e.EngineerNote);
+            Section(box, "Tolerance", e.Tolerance);
+            Section(box, "Reference", e.Reference);
+            Section(box, "Severity", e.SeverityBasis);
+            Section(box, "Exceptions", e.Exceptions);
+            Section(box, "Acceptable alternatives", e.AcceptableAlternatives);
+            Section(box, "How to fix it", e.HowToFix);
+            Section(box, "Basis: " + TypeLabel(e.Type), e.Basis);
+            Section(box, "Engineer's note and limits of this check", e.EngineerNote);
             Section(box, "ETABS table read", e.Table);
         }
 

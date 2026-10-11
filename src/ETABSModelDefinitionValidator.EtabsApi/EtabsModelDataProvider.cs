@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using ETABSModelDefinitionValidator.Core.Logging;
 using ETABSModelDefinitionValidator.Core.Model;
+using ETABSModelDefinitionValidator.Core.Validation;
 using ETABSModelDefinitionValidator.Core.Providers;
 using ETABSModelDefinitionValidator.Excel;
 
@@ -26,12 +27,16 @@ namespace ETABSModelDefinitionValidator.EtabsApi
         public IReadOnlyList<EtabsTableInfo> AvailableTables { get; private set; } = new List<EtabsTableInfo>();
 
         /// <param name="requiredTables">Table titles to read (e.g. the ApplicableTables of the enabled rules). Null = every known table.</param>
-        public EtabsModelDataProvider(EtabsSession session, IEnumerable<string> requiredTables = null, IValidationLogger logger = null)
+        /// <param name="liveData">Object-API data to read on top of the tables (only what an enabled rule needs).</param>
+        public EtabsModelDataProvider(EtabsSession session, IEnumerable<string> requiredTables = null, IValidationLogger logger = null, LiveData liveData = LiveData.None)
         {
             _session = session ?? throw new ArgumentNullException(nameof(session));
             _logger = logger ?? new NullValidationLogger();
             _titles = new HashSet<string>(requiredTables ?? Core.KnownTables.RequiredForInitialRuleSet, StringComparer.OrdinalIgnoreCase);
+            _liveData = liveData;
         }
+
+        private readonly LiveData _liveData;
 
         public ModelData GetModelData()
         {
@@ -42,18 +47,23 @@ namespace ETABSModelDefinitionValidator.EtabsApi
 
             // If ETABS refuses to list its tables, ask for each one directly by name (= its key in ETABS).
             var byName = new Dictionary<string, EtabsTableInfo>(StringComparer.OrdinalIgnoreCase);
-            if (available != null) foreach (var t in available) byName[Normalize(t.Name)] = t;
-            else foreach (var title in _titles) byName[Normalize(title)] = new EtabsTableInfo { Key = title, Name = title };
+            if (available != null) foreach (var t in available) byName[TableNameKey(t.Name)] = t;
+            else foreach (var title in _titles) byName[TableNameKey(title)] = new EtabsTableInfo { Key = title, Name = title };
 
             var tables = new List<RawTable>();
             var notFound = new List<string>();
             var readErrors = new List<(string Title, string Error)>();
+            Dictionary<string, (double X, double Y, double Z)> exactCoordinates = null;
+            List<FrameDistributedLoad> frameLoads = null;
+            List<AreaUniformLoad> areaLoads = null;
+            string loadError = null;
+            var liveNotes = new List<(ImportIssueLevel Level, string Message)>();
 
             using (_session.UnitsScope())
             {
                 foreach (var title in _titles)
                 {
-                    if (!byName.TryGetValue(Normalize(title), out var info))
+                    if (!byName.TryGetValue(TableNameKey(title), out var info))
                     {
                         notFound.Add(title);
                         continue;
@@ -71,10 +81,26 @@ namespace ETABSModelDefinitionValidator.EtabsApi
                         readErrors.Add((title, ex.Message));
                     }
                 }
+
+                // Same N-mm-C scope as the tables, so everything below is in mm and N.
+                if (tables.Any(t => t.TableTitle.Equals(Core.KnownTables.PointObjectConnectivity, StringComparison.OrdinalIgnoreCase)))
+                {
+                    try { exactCoordinates = _session.ReadPointCoordinates(); }
+                    catch (Exception ex) { liveNotes.Add((ImportIssueLevel.Warning, $"Exact joint coordinates could not be read (PointObj.GetAllPoints: {ex.Message}); the rounded table values are used, so the column plumb check may miss offsets smaller than the table's display precision.")); }
+                }
+                if (_liveData.HasFlag(LiveData.LoadAssignments))
+                {
+                    try { frameLoads = _session.ReadFrameDistributedLoads(); }
+                    catch (Exception ex) { loadError = "Frame distributed loads could not be read: " + ex.Message; }
+                    try { areaLoads = _session.ReadAreaUniformLoads(); }
+                    catch (Exception ex) { loadError = (loadError == null ? "" : loadError + " ") + "Area uniform loads could not be read: " + ex.Message; }
+                }
             }
 
             ExtractedTables = tables;
             var model = ExcelModelDataProvider.FromTables($"{_session.ModelName} (live ETABS)", tables, _logger);
+            model.ModelFilePath = _session.ModelFilePath;
+            ApplyLiveData(model, exactCoordinates, frameLoads, areaLoads, loadError, liveNotes);
 
             // FromTables reports every known table it did not receive as "not found in the workbook".
             // Live, that is wrong twice over: there is no workbook, and tables of unticked categories
@@ -85,6 +111,21 @@ namespace ETABSModelDefinitionValidator.EtabsApi
             {
                 model.MissingTables.Remove(title);
                 model.SkippedTables.Add(title);
+            }
+            foreach (var report in model.TableReports.Values.Where(r => r.State == TableImportState.Missing && !_titles.Contains(r.Title)))
+            {
+                report.State = TableImportState.Skipped;
+            }
+            foreach (var (title, error) in readErrors)
+            {
+                var report = model.GetTableReport(title) ?? (model.TableReports[title] = new TableImportReport { Title = title });
+                report.State = TableImportState.FailedToRead;
+                report.Messages.Add(error);
+                if (!model.MissingTables.Contains(title)) model.MissingTables.Add(title);
+            }
+            foreach (var title in notFound.Where(t => model.GetTableReport(t) == null))
+            {
+                model.TableReports[title] = new TableImportReport { Title = title, State = TableImportState.Missing };
             }
 
             if (available == null)
@@ -120,7 +161,47 @@ namespace ETABSModelDefinitionValidator.EtabsApi
             return model;
         }
 
-        private static string Normalize(string s) => new string((s ?? "").Where(c => !char.IsWhiteSpace(c)).ToArray()).ToLowerInvariant();
+        private void ApplyLiveData(ModelData model, Dictionary<string, (double X, double Y, double Z)> coordinates,
+            List<FrameDistributedLoad> frameLoads, List<AreaUniformLoad> areaLoads, string loadError, List<(ImportIssueLevel Level, string Message)> notes)
+        {
+            var source = new SourceLocation { WorkbookName = model.WorkbookName, WorksheetName = ApiTableConverter.WorksheetLabel, TableName = "(object API)", RowNumber = -1 };
+
+            if (coordinates != null)
+            {
+                var replaced = 0;
+                foreach (var p in model.PointObjects)
+                {
+                    if (!coordinates.TryGetValue(p.UniqueName, out var c)) continue;
+                    p.X = c.X; p.Y = c.Y; p.Z = c.Z;
+                    replaced++;
+                }
+                notes.Add((ImportIssueLevel.Info, $"Joint coordinates replaced by exact values from PointObj.GetAllPoints for {replaced:N0} of {model.PointObjects.Count:N0} joints."));
+            }
+
+            if (_liveData.HasFlag(LiveData.LoadAssignments))
+            {
+                model.FrameDistributedLoads = frameLoads;
+                model.AreaUniformLoads = areaLoads;
+                if (loadError != null)
+                {
+                    model.LoadAssignmentsNote = loadError;
+                    notes.Add((ImportIssueLevel.Error, loadError + " Load assignment checks depending on them report NOT_CHECKED."));
+                }
+                else
+                {
+                    notes.Add((ImportIssueLevel.Info, $"Read {frameLoads.Count:N0} frame distributed load(s) and {areaLoads.Count:N0} area uniform load(s) through the object API."));
+                }
+            }
+            else
+            {
+                model.LoadAssignmentsNote = "Load assignments were not read because no enabled rule needs them.";
+            }
+
+            foreach (var (level, message) in notes) model.ImportIssues.Add(new ImportIssue { Level = level, Message = message, Source = source });
+        }
+
+        /// <summary>Key for matching ETABS table names: case- and whitespace-insensitive.</summary>
+        internal static string TableNameKey(string s) => new string((s ?? "").Where(c => !char.IsWhiteSpace(c)).ToArray()).ToLowerInvariant();
 
         private static string Similar(string title, IEnumerable<EtabsTableInfo> available)
         {

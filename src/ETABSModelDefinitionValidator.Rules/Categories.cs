@@ -11,5 +11,7 @@ namespace ETABSModelDefinitionValidator.Rules
         public const string Frames = "Frames";
         public const string DesignOverwrites = "Design Overwrites";
         public const string Diaphragms = "Diaphragms";
+        public const string Geometry = "Geometry and Connectivity";
+        public const string Supports = "Supports";
     }
 }

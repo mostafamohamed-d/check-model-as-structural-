@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Linq;
 
 namespace ETABSModelDefinitionValidator.Core.Validation
 {
@@ -14,14 +13,28 @@ namespace ETABSModelDefinitionValidator.Core.Validation
 
         public Dictionary<string, CategorySummary> ByCategory { get; } = new Dictionary<string, CategorySummary>();
 
-        public ValidationStatus OverallStatus =>
-            FailCount > 0 ? ValidationStatus.Fail :
-            WarningCount > 0 ? ValidationStatus.Warning :
-            ValidationStatus.Pass;
+        /// <summary>
+        /// The run verdict and the reasons for it. Replaces the former OverallStatus, which returned
+        /// PASS whenever there were no FAIL/WARNING results - even if checks had NOT_CHECKED results
+        /// or required tables were missing. Use the overload with the model, enabled rules and profile
+        /// so import completeness is part of the verdict.
+        /// </summary>
+        public RunAssessment Assessment { get; private set; }
 
-        public static ValidationSummary From(IReadOnlyList<ValidationResult> results)
+        public RunVerdict Verdict => Assessment.Verdict;
+
+        /// <summary>Results-only summary: still never PASS with NOT_CHECKED results or unaccepted exemptions,
+        /// but blind to import state. Prefer the full overload for a run verdict.</summary>
+        public static ValidationSummary From(IReadOnlyList<ValidationResult> results) => From(results, null, null, null);
+
+        public static ValidationSummary From(
+            IReadOnlyList<ValidationResult> results,
+            Model.ModelData model,
+            IEnumerable<IValidationRule> rulesRun,
+            Configuration.ReportingRulesConfig policy)
         {
             var summary = new ValidationSummary { TotalCount = results.Count };
+            summary.Assessment = RunAssessment.Evaluate(results, model, rulesRun, policy);
 
             foreach (var result in results)
             {

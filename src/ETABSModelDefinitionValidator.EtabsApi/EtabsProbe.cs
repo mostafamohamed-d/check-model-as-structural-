@@ -30,12 +30,12 @@ namespace ETABSModelDefinitionValidator.EtabsApi
             sb.AppendLine();
 
             var byName = (available ?? new List<EtabsTableInfo>())
-                .GroupBy(t => Squash(t.Name)).ToDictionary(g => g.Key, g => g.First());
+                .GroupBy(t => EtabsModelDataProvider.TableNameKey(t.Name)).ToDictionary(g => g.Key, g => g.First());
 
             int ok = 0, failed = 0;
             foreach (var title in titles)
             {
-                var info = byName.TryGetValue(Squash(title), out var found) ? found : new EtabsTableInfo { Key = title, Name = title };
+                var info = byName.TryGetValue(EtabsModelDataProvider.TableNameKey(title), out var found) ? found : new EtabsTableInfo { Key = title, Name = title };
                 sb.AppendLine($"== {title}");
                 sb.AppendLine($"   listed by ETABS : {(found != null ? $"yes (key '{found.Key}')" : available == null ? "unknown (listing failed) - trying the name as key" : "NO - trying the name as key")}");
                 sw.Restart();
@@ -69,7 +69,5 @@ namespace ETABSModelDefinitionValidator.EtabsApi
             }
             return sb.ToString();
         }
-
-        private static string Squash(string s) => new string((s ?? "").Where(c => !char.IsWhiteSpace(c)).ToArray()).ToLowerInvariant();
     }
 }

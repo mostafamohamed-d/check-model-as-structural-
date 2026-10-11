@@ -62,11 +62,29 @@ dotnet run --project src\ETABSModelDefinitionValidator.UI -- <path-to-etabs-expo
 dotnet run --project src\ETABSModelDefinitionValidator.UI.WinForms
 ```
 
-Console exit code `0` = overall PASS/EXEMPT, `2` = overall FAIL, `1` = the run itself errored (bad
-file, config, etc.). A CSV with every result (rule, category, status, object, story, source
-location, expected/actual, message) is written alongside the console summary; the WinForms UI
-exports the same CSV format via its Export button, for whatever subset the current grid filter
-shows.
+### Run verdict and exit codes
+
+A run is judged as a whole, from the results **and** the import state **and** the profile -
+never from the results alone:
+
+| Verdict | When | Exit code |
+|---|---|---|
+| PASS | every required check ran, nothing failed, no warnings | `0` |
+| PASS WITH WARNINGS | as PASS, with warnings below `Reporting.ReviewSeverity` | `0` |
+| REVIEW REQUIRED | nothing failed or missing, but high-severity warnings, EXEMPT items (unless `Reporting.AcceptExemptions`), or a required table read with 0 records | `4` |
+| INCOMPLETE | any NOT_CHECKED result (unless the rule is in `Reporting.OptionalRules`), a required table missing / schema-invalid / partial / failed / ambiguous, an import error, or no results at all | `3` |
+| FAIL | any FAIL result (incompleteness is still listed) | `2` |
+
+`1` = the run itself errored (bad file, invalid profile, etc.). Every table gets an import state
+(Read, ReadEmpty, Partial, SchemaInvalid, FailedToRead, Ambiguous, Missing, Skipped, Unrecognized);
+records with a blank key, a blank or non-numeric required value, or a duplicate key are rejected,
+never defaulted. Profiles are validated before a run (unknown settings, invalid tolerances,
+overlapping slab prefixes, unsupported code profile, unknown severity -> the run is refused).
+
+A CSV with every result (rule, category, status, object, story, source location, expected/actual,
+message, authority, justification) is written alongside the console summary, plus
+`<name>.verdict.txt` with the verdict and every reason behind it; the WinForms UI exports the same
+CSV format via its Export button, for whatever subset the current grid filter shows.
 
 ## Adding a new rule
 

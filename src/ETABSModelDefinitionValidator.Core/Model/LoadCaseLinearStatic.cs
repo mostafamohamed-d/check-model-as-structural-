@@ -6,6 +6,5 @@ namespace ETABSModelDefinitionValidator.Core.Model
         public string Name { get; set; }
         public string LoadType { get; set; }
         public string LoadName { get; set; }
-        public double LoadScaleFactor { get; set; }
     }
 }

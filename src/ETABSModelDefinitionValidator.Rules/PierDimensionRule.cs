@@ -21,10 +21,7 @@ namespace ETABSModelDefinitionValidator.Rules
         {
             if (!model.WasTableFound(KnownTables.PierSectionProperties))
             {
-                yield return ValidationResult.Create(
-                    RuleIds.Pier001, Name, Category, Type, Severity.Medium, ValidationStatus.NotChecked,
-                    "Table", KnownTables.PierSectionProperties, SourceLocation.Unknown,
-                    message: "Required ETABS table was not found in the workbook. Rule could not be evaluated.");
+                yield return RuleResults.TableNotUsable(this, KnownTables.PierSectionProperties);
                 yield break;
             }
 

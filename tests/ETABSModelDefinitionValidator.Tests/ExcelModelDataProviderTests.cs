@@ -28,9 +28,12 @@ namespace ETABSModelDefinitionValidator.Tests
 
             var walls = workbook.Worksheets.Add("Walls");
             walls.Cell(1, 1).Value = "TABLE:  Wall Property Definitions - Specified";
-            walls.Cell(2, 1).Value = "Name"; walls.Cell(2, 2).Value = "Wall Thickness";
-            walls.Cell(3, 1).Value = ""; walls.Cell(3, 2).Value = "mm";
-            walls.Cell(4, 1).Value = "W300-C40"; walls.Cell(4, 2).Value = 300;
+            // A complete wall table: every column the schema requires (TableSchemas).
+            var headers = new[] { "Name", "Material", "Wall Thickness", "f11 Modifier", "f22 Modifier", "f12 Modifier", "m11 Modifier", "m22 Modifier", "m12 Modifier" };
+            for (var c = 0; c < headers.Length; c++) walls.Cell(2, c + 1).Value = headers[c];
+            walls.Cell(3, 1).Value = ""; walls.Cell(3, 3).Value = "mm";
+            walls.Cell(4, 1).Value = "W300-C40"; walls.Cell(4, 2).Value = "C40/50"; walls.Cell(4, 3).Value = 300;
+            for (var c = 4; c <= 9; c++) walls.Cell(4, c).Value = 0.7;
 
             var diaphragms = workbook.Worksheets.Add("Diaphragms");
             diaphragms.Cell(1, 1).Value = "TABLE:  Diaphragm Definitions";

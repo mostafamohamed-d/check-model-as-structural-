@@ -11,13 +11,14 @@ namespace ETABSModelDefinitionValidator.Reporting
     /// data instead of re-deriving it.</summary>
     public static class ConsoleReportWriter
     {
-        public static void WriteSummary(IReadOnlyList<ValidationResult> results, TextWriter writer = null)
+        /// <summary>Results-only summary (cannot see import completeness). Prefer the ValidationSummary overload.</summary>
+        public static void WriteSummary(IReadOnlyList<ValidationResult> results, TextWriter writer = null) =>
+            WriteSummary(ValidationSummary.From(results), writer);
+
+        public static void WriteSummary(ValidationSummary summary, TextWriter writer = null)
         {
             writer = writer ?? Console.Out;
-            var summary = ValidationSummary.From(results);
-
-            writer.WriteLine();
-            writer.WriteLine($"Overall Model Status: {summary.OverallStatus}");
+            WriteVerdict(summary.Assessment, writer);
             writer.WriteLine();
             writer.WriteLine($"PASS         {summary.PassCount}");
             writer.WriteLine($"WARNING      {summary.WarningCount}");
@@ -31,6 +32,30 @@ namespace ETABSModelDefinitionValidator.Reporting
             {
                 writer.WriteLine($"  {cat.Category,-20} PASS={cat.PassCount,-5} WARN={cat.WarningCount,-5} FAIL={cat.FailCount,-5} EXEMPT={cat.ExemptCount,-5} NOT_CHECKED={cat.NotCheckedCount}");
             }
+        }
+
+        /// <summary>The verdict, its scope and every reason that blocks a PASS.</summary>
+        public static void WriteVerdict(RunAssessment a, TextWriter writer = null, int maxReasons = 25)
+        {
+            writer = writer ?? Console.Out;
+            writer.WriteLine();
+            writer.WriteLine($"RUN VERDICT: {RunAssessment.Label(a.Verdict)}   (exit code {a.ExitCode})");
+            if (a.CategoriesTotal > 0)
+            {
+                writer.WriteLine($"Scope: {a.CategoriesRun} of {a.CategoriesTotal} check categories enabled" +
+                                 (a.CategoriesRun < a.CategoriesTotal ? " - the verdict covers only these." : "."));
+            }
+            WriteReasons(writer, "Failed", a.FailReasons, maxReasons);
+            WriteReasons(writer, "Incomplete - required evidence missing", a.IncompleteReasons, maxReasons);
+            WriteReasons(writer, "Needs engineer review", a.ReviewReasons, maxReasons);
+        }
+
+        private static void WriteReasons(TextWriter writer, string heading, List<string> reasons, int max)
+        {
+            if (reasons.Count == 0) return;
+            writer.WriteLine($"{heading}:");
+            foreach (var r in reasons.Take(max)) writer.WriteLine("  - " + r);
+            if (reasons.Count > max) writer.WriteLine($"  ... and {reasons.Count - max} more");
         }
 
         public static void WriteFailuresAndWarnings(IReadOnlyList<ValidationResult> results, TextWriter writer = null)

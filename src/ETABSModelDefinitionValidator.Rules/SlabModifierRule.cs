@@ -32,17 +32,14 @@ namespace ETABSModelDefinitionValidator.Rules
             ["Ordinary"] = RuleIds.Slab002,
             ["Stair"] = RuleIds.Slab003,
             ["Ramp"] = RuleIds.Slab003,
-            ["Raft"] = "SLAB-004" // not in the original 19, added for the Raft classification gap - see docs/ValidationMatrix.md
+            ["Raft"] = RuleIds.Slab004 // not in the original 19, added for the Raft classification gap - see docs/ValidationMatrix.md
         };
 
         public IEnumerable<ValidationResult> Validate(ModelData model, ValidationProfileConfig config)
         {
             if (!model.WasTableFound(KnownTables.SlabPropertyDefinitions))
             {
-                yield return ValidationResult.Create(
-                    RuleIds.Slab001, Name, Category, Type, Severity.Medium, ValidationStatus.NotChecked,
-                    "Table", KnownTables.SlabPropertyDefinitions, SourceLocation.Unknown,
-                    message: "Required ETABS table was not found in the workbook. Rule could not be evaluated.");
+                yield return RuleResults.TableNotUsable(this, KnownTables.SlabPropertyDefinitions);
                 yield break;
             }
 
@@ -81,9 +78,11 @@ namespace ETABSModelDefinitionValidator.Rules
                         ruleId, Name, Category, ruleType, DefaultSeverity, status,
                         "SlabProperty", slab.Name, slab.Source, fieldName: fieldName,
                         expected: expected.ToString("0.00"), actual: actual.ToString("0.00"),
-                        message: status == ValidationStatus.Pass
+                        message: (status == ValidationStatus.Pass
                             ? $"{fieldName} matches the {parsed.Classification} slab standard ({expected})."
-                            : $"{fieldName} is {actual}, expected {expected} for a {parsed.Classification} slab.");
+                            : $"{fieldName} is {actual}, expected {expected} for a {parsed.Classification} slab.") +
+                            $" Classified {parsed.Classification} from name prefix '{parsed.Prefix}'" +
+                            (profile.NamePrefixes.Count == 0 ? " (no class prefix matched - ordinary catch-all)." : $" (profile prefixes: {string.Join(", ", profile.NamePrefixes)})."));
                 }
             }
         }

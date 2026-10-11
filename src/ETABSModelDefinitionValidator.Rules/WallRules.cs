@@ -25,7 +25,7 @@ namespace ETABSModelDefinitionValidator.Rules
         {
             if (!model.WasTableFound(KnownTables.WallPropertyDefinitionsSpecified))
             {
-                yield return NotChecked(model);
+                yield return RuleResults.TableNotUsable(this, KnownTables.WallPropertyDefinitionsSpecified);
                 yield break;
             }
 
@@ -54,11 +54,6 @@ namespace ETABSModelDefinitionValidator.Rules
                         : $"Wall thickness encoded in property name ({parsed.ThicknessMm} mm) does not match the defined ETABS wall thickness ({wall.ThicknessMm} mm), difference {(diff > 0 ? "+" : "")}{diff} mm.");
             }
         }
-
-        private ValidationResult NotChecked(ModelData model) => ValidationResult.Create(
-            RuleId, Name, Category, Type, Severity.Medium, ValidationStatus.NotChecked,
-            "Table", KnownTables.WallPropertyDefinitionsSpecified, SourceLocation.Unknown,
-            message: "Required ETABS table was not found in the workbook. Rule could not be evaluated.");
     }
 
     /// <summary>WALL-002: the material grade encoded in the wall property name must match the assigned material's Fc.</summary>
@@ -77,10 +72,7 @@ namespace ETABSModelDefinitionValidator.Rules
         {
             if (!model.WasTableFound(KnownTables.WallPropertyDefinitionsSpecified))
             {
-                yield return ValidationResult.Create(
-                    RuleId, Name, Category, Type, Severity.Medium, ValidationStatus.NotChecked,
-                    "Table", KnownTables.WallPropertyDefinitionsSpecified, SourceLocation.Unknown,
-                    message: "Required ETABS table was not found in the workbook. Rule could not be evaluated.");
+                yield return RuleResults.TableNotUsable(this, KnownTables.WallPropertyDefinitionsSpecified);
                 yield break;
             }
 
@@ -149,10 +141,7 @@ namespace ETABSModelDefinitionValidator.Rules
         {
             if (!model.WasTableFound(KnownTables.WallPropertyDefinitionsSpecified))
             {
-                yield return ValidationResult.Create(
-                    RuleId, Name, Category, Type, Severity.Medium, ValidationStatus.NotChecked,
-                    "Table", KnownTables.WallPropertyDefinitionsSpecified, SourceLocation.Unknown,
-                    message: "Required ETABS table was not found in the workbook. Rule could not be evaluated.");
+                yield return RuleResults.TableNotUsable(this, KnownTables.WallPropertyDefinitionsSpecified);
                 yield break;
             }
 
@@ -168,7 +157,8 @@ namespace ETABSModelDefinitionValidator.Rules
                     yield return ValidationResult.Create(
                         RuleIds.Wall004, "Wall Modifier Exception", Category, RuleType.ProjectStandard, Severity.Low,
                         ValidationStatus.Exempt, "WallProperty", wall.Name, wall.Source,
-                        message: $"'{wall.Name}' is exempt from the standard wall modifier requirement (prefix '{parsed.Prefix}' -> Water Tank / Basement Wall exception).");
+                        message: $"'{wall.Name}' is exempt from the standard wall modifier requirement: its name prefix '{parsed.Prefix}' is in the profile's exemption list " +
+                                 $"(Walls.ExceptionPrefixes: {string.Join(", ", config.Walls.ExceptionPrefixes)}). Not checked automatically - its modifiers need manual review.");
                     continue;
                 }
 

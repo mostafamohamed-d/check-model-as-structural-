@@ -20,7 +20,7 @@ namespace ETABSModelDefinitionValidator.EtabsApi
     /// that process's own install folder so ETABS 21 and 22 both work from one build. Calls go
     /// through reflection because the two ETABSv1.dll versions are different assembly identities.
     /// </summary>
-    public sealed class EtabsSession
+    public sealed partial class EtabsSession
     {
         private const string ProgId = "CSI.ETABS.API.ETABSObject";
 
@@ -51,7 +51,9 @@ namespace ETABSModelDefinitionValidator.EtabsApi
         /// <summary>Running ETABS processes, newest first.</summary>
         public static IReadOnlyList<Process> FindRunningEtabs()
         {
-            return Process.GetProcessesByName("ETABS").OrderByDescending(SafeStart).ToList();
+            // Instances showing an open model first, then newest. The default attach (no pid) takes the first,
+            // so a freshly started ETABS still at its sign-in screen is never preferred over one with a model.
+            return Process.GetProcessesByName("ETABS").OrderByDescending(LooksReady).ThenByDescending(SafeStart).ToList();
         }
 
         private static DateTime SafeStart(Process p) { try { return p.StartTime; } catch { return DateTime.MinValue; } }
@@ -103,8 +105,39 @@ namespace ETABSModelDefinitionValidator.EtabsApi
             if (sapModel == null) throw new InvalidOperationException("ETABS returned no SapModel - is a model open?");
 
             var path = (string)Call(sapModel, "GetModelFilename", true).Return;
-            return new EtabsSession(api, sapModel, path, folder, process.Id);
+            var session = new EtabsSession(api, sapModel, path, folder, process.Id);
+            session.EnsureModelReady(SafeTitle(process));
+            return session;
         }
+
+        /// <summary>
+        /// Fail fast when the attached ETABS has nothing to read - e.g. an instance still at the
+        /// "CSI Account Sign In" screen, or one with no model open. Such an instance accepts the API
+        /// connection but then refuses every call (tables return -96, listings return 1), which would
+        /// otherwise surface as dozens of per-table errors. "No file path AND no table listing" is the
+        /// signature; a saved model, or an unsaved one that still lists its tables, passes.
+        /// </summary>
+        internal void EnsureModelReady(string windowTitle)
+        {
+            if (!string.IsNullOrEmpty(ModelFilePath)) return;
+            var problems = new List<string>();
+            if (GetAvailableTables(problems) != null) return;
+
+            throw new InvalidOperationException(
+                $"ETABS (pid {ProcessId}{(string.IsNullOrEmpty(windowTitle) ? "" : $", window '{windowTitle}'")}) has no model open, or is not ready " +
+                "(for example still waiting at the CSI Account Sign In screen). It accepted the connection but refuses to give any table " +
+                $"({string.Join(" ", problems)}). Sign in and open the model in that ETABS, or select the ETABS instance that has your model open.");
+        }
+
+        /// <summary>True when the window title shows a model is open ("ETABS ... - ModelName"). Used only to
+        /// order/label instances; readiness is decided by <see cref="EnsureModelReady"/>.</summary>
+        public static bool LooksReady(Process p)
+        {
+            var t = SafeTitle(p);
+            return t.StartsWith("ETABS", StringComparison.OrdinalIgnoreCase) && t.Contains(" - ");
+        }
+
+        private static string SafeTitle(Process p) { try { return p.MainWindowTitle ?? ""; } catch { return ""; } }
 
         /// <summary>Every table ETABS can display for this model (key + name).</summary>
         /// <summary>Returns null (not an exception) when this ETABS build refuses to list its tables -
@@ -192,19 +225,6 @@ namespace ETABSModelDefinitionValidator.EtabsApi
             };
         }
 
-        /// <summary>Diagnostic only (read-only): the exact call the first version made - GetAllTables
-        /// with null by-ref arrays - so its return code can be compared with the empty-array form.</summary>
-        public string DiagnoseListingForms()
-        {
-            string Try(object[] args)
-            {
-                try { var r = Call(_tables, "GetAllTables", args); return $"returned {r.Return}, NumberTables={r.Args[0]}"; }
-                catch (Exception ex) { return "threw: " + ex.Message; }
-            }
-            return "GetAllTables(null arrays)  " + Try(new object[] { 0, null, null, null, null }) + "\n" +
-                   "GetAllTables(empty arrays) " + Try(new object[] { 0, new string[0], new string[0], new int[0], new bool[0] });
-        }
-
         /// <summary>Name of the model's current present units (read-only).</summary>
         public string PresentUnitsName()
         {
@@ -229,10 +249,17 @@ namespace ETABSModelDefinitionValidator.EtabsApi
 
         private sealed class CallResult { public object Return; public object[] Args; public string Method; }
 
+        // Lookups are cached: group write-back calls the same method once per object.
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<(Type, string), MethodInfo> Methods =
+            new System.Collections.Concurrent.ConcurrentDictionary<(Type, string), MethodInfo>();
+
+        private static MethodInfo FindMethod(object target, string method) =>
+            Methods.GetOrAdd((target.GetType(), method), k =>
+                k.Item1.GetMethod(k.Item2) ?? k.Item1.GetInterfaces().Select(i => i.GetMethod(k.Item2)).FirstOrDefault(x => x != null));
+
         private static CallResult Call(object target, string method, params object[] args)
         {
-            var type = target.GetType();
-            var m = type.GetMethod(method) ?? type.GetInterfaces().Select(i => i.GetMethod(method)).FirstOrDefault(x => x != null)
+            var m = FindMethod(target, method)
                 ?? throw new MissingMethodException($"{target.GetType().Name}.{method} not found in this ETABS API version.");
             try
             {

@@ -32,8 +32,8 @@ namespace ETABSModelDefinitionValidator.Core.Naming
                 Success = true,
                 RawName = name,
                 Prefix = match.Groups["prefix"].Value,
-                ThicknessMm = double.Parse(match.Groups["thickness"].Value),
-                GradeFcMpa = double.Parse(match.Groups["grade"].Value)
+                ThicknessMm = double.Parse(match.Groups["thickness"].Value, System.Globalization.CultureInfo.InvariantCulture),
+                GradeFcMpa = double.Parse(match.Groups["grade"].Value, System.Globalization.CultureInfo.InvariantCulture)
             };
         }
     }

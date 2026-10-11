@@ -7,8 +7,5 @@ namespace ETABSModelDefinitionValidator.Core.Model
         public double UnitWeightKnPerM3 { get; set; }
         public double UnitMassKgPerM3 { get; set; }
         public double E1Mpa { get; set; }
-        public double G12Mpa { get; set; }
-        public double PoissonRatio { get; set; }
-        public double ThermalCoefficientPerC { get; set; }
     }
 }

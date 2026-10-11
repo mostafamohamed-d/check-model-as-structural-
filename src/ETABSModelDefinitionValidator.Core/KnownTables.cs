@@ -18,12 +18,20 @@ namespace ETABSModelDefinitionValidator.Core
         public const string MaterialPropertiesBasicMechanicalProperties = "Material Properties - Basic Mechanical Properties";
         public const string LoadPatternDefinitions = "Load Pattern Definitions";
         public const string LoadCaseDefinitionsLinearStatic = "Load Case Definitions - Linear Static";
-        public const string FrameAssignmentsPropertyModifiers = "Frame Assignments - Property Modifiers";
         public const string FrameAssignmentsFrameAutoMeshOptions = "Frame Assignments - Frame Auto Mesh Options";
         public const string FrameAssignmentsEndLengthOffsets = "Frame Assignments - End Length Offsets";
         public const string DiaphragmDefinitions = "Diaphragm Definitions";
         public const string ConcreteColumnOverwritesAci31819 = "Concrete Column Overwrites - ACI 318-19";
-        public const string ReinforcingBarSizes = "Reinforcing Bar Sizes";
+        public const string AreaAssignmentsPierLabels = "Area Assignments - Pier Labels";
+        public const string WallObjectConnectivity = "Wall Object Connectivity";
+        public const string PointObjectConnectivity = "Point Object Connectivity";
+        public const string FloorObjectConnectivity = "Floor Object Connectivity";
+        public const string ColumnObjectConnectivity = "Column Object Connectivity";
+        public const string BeamObjectConnectivity = "Beam Object Connectivity";
+        public const string LinkObjectConnectivity = "Link Object Connectivity";
+        public const string JointAssignmentsRestraints = "Joint Assignments - Restraints";
+        public const string AreaLoadAssignmentsUniformLoadSets = "Area Load Assignments - Uniform Load Sets";
+        public const string TowerAndBaseStoryDefinitions = "Tower and Base Story Definitions";
 
         public static readonly string[] RequiredForInitialRuleSet =
         {
@@ -38,7 +46,17 @@ namespace ETABSModelDefinitionValidator.Core
             FrameAssignmentsFrameAutoMeshOptions,
             FrameAssignmentsEndLengthOffsets,
             DiaphragmDefinitions,
-            ConcreteColumnOverwritesAci31819
+            ConcreteColumnOverwritesAci31819,
+            AreaAssignmentsPierLabels,
+            WallObjectConnectivity,
+            PointObjectConnectivity,
+            FloorObjectConnectivity,
+            ColumnObjectConnectivity,
+            BeamObjectConnectivity,
+            LinkObjectConnectivity,
+            JointAssignmentsRestraints,
+            AreaLoadAssignmentsUniformLoadSets,
+            TowerAndBaseStoryDefinitions
         };
     }
 }

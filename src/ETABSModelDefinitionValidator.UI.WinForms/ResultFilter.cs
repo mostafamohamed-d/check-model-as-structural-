@@ -12,9 +12,12 @@ namespace ETABSModelDefinitionValidator.UI.WinForms
         public string Category { get; set; }
         public Severity? Severity { get; set; }
         public string SearchText { get; set; }
+        /// <summary>Restricts to one rule (the per-check tabs).</summary>
+        public string RuleId { get; set; }
 
         public bool Matches(ValidationResult result)
         {
+            if (!string.IsNullOrEmpty(RuleId) && !string.Equals(result.RuleId, RuleId, StringComparison.OrdinalIgnoreCase)) return false;
             if (Status.HasValue && result.Status != Status.Value) return false;
             if (!string.IsNullOrEmpty(Category) && !string.Equals(result.Category, Category, StringComparison.OrdinalIgnoreCase)) return false;
             if (Severity.HasValue && result.Severity != Severity.Value) return false;

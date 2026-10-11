@@ -27,10 +27,7 @@ namespace ETABSModelDefinitionValidator.Rules
 
             if (!model.WasTableFound(KnownTables.FrameAssignmentsFrameAutoMeshOptions))
             {
-                yield return ValidationResult.Create(
-                    RuleId, Name, Category, Type, Severity.Medium, ValidationStatus.NotChecked,
-                    "Table", KnownTables.FrameAssignmentsFrameAutoMeshOptions, SourceLocation.Unknown,
-                    message: "Required ETABS table was not found in the workbook. Rule could not be evaluated.");
+                yield return RuleResults.TableNotUsable(this, KnownTables.FrameAssignmentsFrameAutoMeshOptions);
                 yield break;
             }
 
@@ -85,10 +82,7 @@ namespace ETABSModelDefinitionValidator.Rules
 
             if (!model.WasTableFound(KnownTables.FrameAssignmentsEndLengthOffsets))
             {
-                yield return ValidationResult.Create(
-                    RuleId, Name, Category, Type, Severity.Medium, ValidationStatus.NotChecked,
-                    "Table", KnownTables.FrameAssignmentsEndLengthOffsets, SourceLocation.Unknown,
-                    message: "Required ETABS table was not found in the workbook. Rule could not be evaluated.");
+                yield return RuleResults.TableNotUsable(this, KnownTables.FrameAssignmentsEndLengthOffsets);
                 yield break;
             }
 

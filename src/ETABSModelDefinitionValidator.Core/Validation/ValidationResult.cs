@@ -30,6 +30,17 @@ namespace ETABSModelDefinitionValidator.Core.Validation
 
         public CodeReference CodeBasis { get; set; }
 
+        /// <summary>Who demands this check: "CODE REQUIREMENT" vs "OFFICE STANDARD" etc. Filled from the
+        /// rule catalog after the run so every result says where its requirement comes from.</summary>
+        public string Authority { get; set; }
+
+        /// <summary>Source and justification of the requirement (reference, tolerance, applicability) so a
+        /// reviewer can trace a FAIL without relying on the property name. Filled from the rule catalog.</summary>
+        public string Justification { get; set; }
+
+        /// <summary>ETABS objects to put in a failure group (geometry/connectivity checks only; null otherwise).</summary>
+        public EtabsObjectRefs Objects { get; set; }
+
         public static ValidationResult Create(
             string ruleId, string ruleName, string category, RuleType ruleType, Severity severity,
             ValidationStatus status, string objectType, string objectName, SourceLocation source,

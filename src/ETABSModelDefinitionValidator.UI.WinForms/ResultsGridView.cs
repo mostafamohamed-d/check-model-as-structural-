@@ -21,6 +21,11 @@ namespace ETABSModelDefinitionValidator.UI.WinForms
             "Status", "RuleId", "Category", "Severity", "ObjectType", "ObjectName",
             "Story", "FieldName", "Expected", "Actual", "Message", "Table", "Row"
         };
+        private static readonly string[] Headers =
+        {
+            "Status", "Rule", "Category", "Severity", "Object type", "Object",
+            "Story", "Field", "Expected", "Actual", "Message", "ETABS table", "Row"
+        };
 
         private readonly DataGridView _grid;
         private List<ValidationResult> _allResults = new List<ValidationResult>();
@@ -37,6 +42,7 @@ namespace ETABSModelDefinitionValidator.UI.WinForms
         public ResultsGridView()
         {
             Dock = DockStyle.Fill;
+            BackColor = Theme.Surface;
 
             _grid = new DataGridView
             {
@@ -45,28 +51,30 @@ namespace ETABSModelDefinitionValidator.UI.WinForms
                 ReadOnly = true,
                 AllowUserToAddRows = false,
                 AllowUserToDeleteRows = false,
-                AllowUserToResizeRows = false,
-                RowHeadersVisible = false,
                 SelectionMode = DataGridViewSelectionMode.FullRowSelect,
                 MultiSelect = false,
                 AutoGenerateColumns = false,
                 EditMode = DataGridViewEditMode.EditProgrammatically
             };
+            Theme.StyleGrid(_grid);
 
-            var widths = new[] { 80, 90, 130, 80, 100, 150, 100, 110, 150, 150, 420, 170, 60 };
+            var widths = new[] { 118, 100, 120, 75, 95, 150, 90, 120, 120, 120, 420, 200, 50 };
             for (var i = 0; i < ColumnNames.Length; i++)
             {
                 _grid.Columns.Add(new DataGridViewTextBoxColumn
                 {
                     Name = ColumnNames[i],
-                    HeaderText = ColumnNames[i],
-                    Width = widths[i],
+                    HeaderText = Headers[i],
+                    Width = this.S(widths[i]),
                     SortMode = DataGridViewColumnSortMode.Programmatic
                 });
             }
+            _grid.Columns["Message"].AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
+            _grid.Columns["Message"].MinimumWidth = this.S(240);
 
             _grid.CellValueNeeded += Grid_CellValueNeeded;
             _grid.CellFormatting += Grid_CellFormatting;
+            _grid.CellPainting += Grid_CellPainting;
             _grid.SelectionChanged += Grid_SelectionChanged;
             _grid.ColumnHeaderMouseClick += Grid_ColumnHeaderMouseClick;
 
@@ -88,6 +96,7 @@ namespace ETABSModelDefinitionValidator.UI.WinForms
             _grid.RowCount = 0;
             _grid.RowCount = _view.Count;
             _grid.Invalidate();
+            if (_view.Count == 0) SelectionChanged?.Invoke(this, null);
         }
 
         public List<ValidationResult> CurrentView => _view;
@@ -123,6 +132,8 @@ namespace ETABSModelDefinitionValidator.UI.WinForms
             var column = ColumnNames[e.ColumnIndex];
             _sortAscending = _sortColumn == column ? !_sortAscending : true;
             _sortColumn = column;
+            foreach (DataGridViewColumn c in _grid.Columns) c.HeaderCell.SortGlyphDirection = SortOrder.None;
+            _grid.Columns[e.ColumnIndex].HeaderCell.SortGlyphDirection = _sortAscending ? SortOrder.Ascending : SortOrder.Descending;
             ApplyFilter(_lastFilter);
         }
 
@@ -133,7 +144,7 @@ namespace ETABSModelDefinitionValidator.UI.WinForms
 
             switch (ColumnNames[e.ColumnIndex])
             {
-                case "Status": e.Value = r.Status.ToString(); break;
+                case "Status": e.Value = Theme.StatusText(r.Status); break;
                 case "RuleId": e.Value = r.RuleId; break;
                 case "Category": e.Value = r.Category; break;
                 case "Severity": e.Value = r.Severity.ToString(); break;
@@ -154,7 +165,36 @@ namespace ETABSModelDefinitionValidator.UI.WinForms
             // Virtual mode only calls this for cells actually being painted (the viewport), so
             // this stays cheap regardless of total row count.
             if (e.RowIndex < 0 || e.RowIndex >= _view.Count) return;
-            e.CellStyle.ForeColor = SummaryPanel.ColorForStatus(_view[e.RowIndex].Status);
+            var r = _view[e.RowIndex];
+            switch (ColumnNames[e.ColumnIndex])
+            {
+                case "RuleId": e.CellStyle.Font = Theme.BodyStrong; break;
+                case "Severity":
+                    if (r.Severity == Severity.Critical) { e.CellStyle.ForeColor = Theme.Fail; e.CellStyle.SelectionForeColor = Theme.Fail; }
+                    else if (r.Severity == Severity.Low) e.CellStyle.ForeColor = Theme.InkMuted;
+                    break;
+                case "Actual":
+                    if (r.Status == ValidationStatus.Fail || r.Status == ValidationStatus.Warning)
+                    {
+                        var c = Theme.Shade(Theme.ColorForStatus(r.Status), 0.1f);
+                        e.CellStyle.ForeColor = c;
+                        e.CellStyle.SelectionForeColor = c;
+                        e.CellStyle.Font = Theme.BodyStrong;
+                    }
+                    break;
+                case "Category": case "ObjectType": case "Table": case "Row": case "Story":
+                    e.CellStyle.ForeColor = Theme.InkMuted;
+                    break;
+            }
+        }
+
+        private void Grid_CellPainting(object sender, DataGridViewCellPaintingEventArgs e)
+        {
+            // Only visible cells are painted, so pills cost nothing at 20k rows.
+            if (e.RowIndex < 0 || e.RowIndex >= _view.Count || ColumnNames[e.ColumnIndex] != "Status") return;
+            e.PaintBackground(e.ClipBounds, (e.State & DataGridViewElementStates.Selected) != 0);
+            Theme.DrawStatusPill(e.Graphics, e.CellBounds, _view[e.RowIndex].Status, _grid);
+            e.Handled = true;
         }
 
         private void Grid_SelectionChanged(object sender, EventArgs e)

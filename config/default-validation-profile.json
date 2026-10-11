@@ -31,9 +31,6 @@
     "DeadPatternTypeName": "Dead",
     "RequiredSelfWeightMultiplier": 1.0
   },
-  "LoadCases": {
-    "WarnIfLoadNameDoesNotContainCaseName": true
-  },
   "ColumnOverwrites": {
     "RequiredDesignSection": "Program Determined"
   },
@@ -46,5 +43,16 @@
   },
   "ConcreteMaterials": {
     "FcToleranceMpa": 0.5
+  },
+  "Geometry": {
+    "CoordinateToleranceMm": 0.0,
+    "PierAdjacencyToleranceMm": 20.0,
+    "FoundationModelNameTokens": [ "fnd" ]
+  },
+  "Reporting": {
+    "ReviewSeverity": "High",
+    "AcceptExemptions": false,
+    "OptionalRules": [],
+    "AllowedEmptyTables": []
   }
 }

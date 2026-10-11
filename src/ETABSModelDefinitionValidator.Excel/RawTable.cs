@@ -17,21 +17,13 @@ namespace ETABSModelDefinitionValidator.Excel
             return v?.ToString()?.Trim();
         }
 
-        public double GetDouble(string columnKey, double defaultValue = 0)
-        {
-            var v = Get(columnKey);
-            if (v == null) return defaultValue;
-            if (v is double d) return d;
-            return double.TryParse(v.ToString(), out var parsed) ? parsed : defaultValue;
-        }
+        // Same parser as TableValidator, so a value the schema check accepted is read back identically
+        // (invariant first - "0.7" must never become 7 on a comma-decimal Windows locale).
+        public double GetDouble(string columnKey, double defaultValue = 0) =>
+            TableValidator.TryNumber(Get(columnKey), out var value) ? value : defaultValue;
 
-        public double? GetNullableDouble(string columnKey)
-        {
-            var v = Get(columnKey);
-            if (v == null) return null;
-            if (v is double d) return d;
-            return double.TryParse(v.ToString(), out var parsed) ? parsed : (double?)null;
-        }
+        public double? GetNullableDouble(string columnKey) =>
+            TableValidator.TryNumber(Get(columnKey), out var value) ? value : (double?)null;
 
         public bool GetYesNoBool(string columnKey, bool defaultValue = false)
         {

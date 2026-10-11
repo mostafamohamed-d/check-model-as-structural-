@@ -22,10 +22,7 @@ namespace ETABSModelDefinitionValidator.Rules
         {
             if (!model.WasTableFound(KnownTables.MaterialPropertiesRebarData))
             {
-                yield return ValidationResult.Create(
-                    RuleId, Name, Category, Type, Severity.Medium, ValidationStatus.NotChecked,
-                    "Table", KnownTables.MaterialPropertiesRebarData, SourceLocation.Unknown,
-                    message: "Required ETABS table was not found in the workbook. Rule could not be evaluated.");
+                yield return RuleResults.TableNotUsable(this, KnownTables.MaterialPropertiesRebarData);
                 yield break;
             }
 
@@ -80,10 +77,7 @@ namespace ETABSModelDefinitionValidator.Rules
         {
             if (!model.WasTableFound(KnownTables.MaterialPropertiesConcreteData))
             {
-                yield return ValidationResult.Create(
-                    RuleId, Name, Category, Type, Severity.Medium, ValidationStatus.NotChecked,
-                    "Table", KnownTables.MaterialPropertiesConcreteData, SourceLocation.Unknown,
-                    message: "Required ETABS table was not found in the workbook. Rule could not be evaluated.");
+                yield return RuleResults.TableNotUsable(this, KnownTables.MaterialPropertiesConcreteData);
                 yield break;
             }
 
@@ -115,15 +109,19 @@ namespace ETABSModelDefinitionValidator.Rules
     }
 
     /// <summary>
-    /// MAT-CONC-002: broader concrete property checks. v1 implements only the one property with
-    /// a verifiable, code-derived closed-form relationship (modulus of elasticity per ACI 318-19
-    /// Eq. 19.2.2.1.b, Ec = 4700*sqrt(Fc') for normalweight concrete) so it is not fabricating a
-    /// requirement. Every other ETABS material field (creep, shrinkage, stress-strain curve
-    /// shape, etc.) is intentionally NOT_CHECKED / REFERENCE_PENDING until a verified source
-    /// (code clause or confirmed project standard) is supplied - see master prompt §45.
+    /// MAT-CONC-002: concrete modulus of elasticity against ACI 318-19 19.2.2.1, BOTH forms:
+    ///   (a) Ec = wc^1.5 * 0.043 * sqrt(fc')  for 1440 to 2560 kg/m3 (wc from the material's own unit mass/weight)
+    ///   (b) Ec = 4700 * sqrt(fc')            normalweight concrete
+    /// E1 passes when it is within tolerance of EITHER equation - the code permits both, and ETABS's
+    /// own default concrete uses (a) with the material density. Only the modulus is checked: every
+    /// other ETABS material field (creep, shrinkage, curve shape...) stays unchecked until a
+    /// verified source is supplied - see master prompt §45.
     /// </summary>
     public sealed class ConcretePropertyRule : IValidationRule
     {
+        /// <summary>Allowed difference between E1 and the code value, percent.</summary>
+        public const double TolerancePercent = 5.0;
+
         public string RuleId => RuleIds.MatConc002;
         public string Name => "Concrete Material Properties";
         public string Category => Categories.Materials;
@@ -135,17 +133,12 @@ namespace ETABSModelDefinitionValidator.Rules
         {
             if (!model.WasTableFound(KnownTables.MaterialPropertiesConcreteData))
             {
-                yield return ValidationResult.Create(
-                    RuleId, Name, Category, Type, Severity.Medium, ValidationStatus.NotChecked,
-                    "Table", KnownTables.MaterialPropertiesConcreteData, SourceLocation.Unknown,
-                    message: "Required ETABS table was not found in the workbook. Rule could not be evaluated.");
+                yield return RuleResults.TableNotUsable(this, KnownTables.MaterialPropertiesConcreteData);
                 yield break;
             }
 
             var isAci = config.CodeProfile != null && config.CodeProfile.StartsWith("ACI", StringComparison.OrdinalIgnoreCase);
-            var codeBasis = isAci
-                ? new CodeReference { Code = "ACI 318-19", Edition = "2019", ChapterOrSection = "19.2.2.1(b)", IsVerified = true }
-                : CodeReference.ReferencePending(config.CodeProfile ?? "(unspecified)", "-");
+            var codeBasis = new CodeReference { Code = "ACI 318-19", Edition = "2019", ChapterOrSection = "19.2.2.1(a) and (b)", IsVerified = true };
 
             foreach (var material in model.ConcreteMaterials)
             {
@@ -158,30 +151,87 @@ namespace ETABSModelDefinitionValidator.Rules
                     continue;
                 }
 
-                if (!isAci || material.IsLightweight)
+                if (!isAci)
                 {
                     yield return ValidationResult.Create(
                         RuleId, Name, Category, Type, Severity.Low, ValidationStatus.NotChecked,
                         "ConcreteMaterial", material.Name, material.Source, fieldName: "E1",
-                        message: material.IsLightweight
-                            ? $"'{material.Name}' is lightweight concrete; the normalweight Ec formula does not apply and no lightweight formula is configured yet."
-                            : $"No verified Ec formula is configured for code profile '{config.CodeProfile}'.",
+                        message: $"No verified Ec formula is configured for code profile '{config.CodeProfile}'.",
                         codeBasis: CodeReference.ReferencePending(config.CodeProfile ?? "(unspecified)", "-"));
                     continue;
                 }
 
-                var expectedE = 4700.0 * Math.Sqrt(material.FcMpa);
+                var fc = material.FcMpa;
                 var actualE = material.MechanicalProperties.E1Mpa;
-                var percentDiff = expectedE == 0 ? 0 : Math.Abs(actualE - expectedE) / expectedE * 100.0;
-                var status = percentDiff <= 5.0 ? ValidationStatus.Pass : ValidationStatus.Warning;
+                var notes = new List<string>();
+
+                // Eq. (a): needs the density, and only applies within its wc range.
+                double? eqA = null;
+                var hasWc = ConcreteModulus.TryGetDensity(material.MechanicalProperties, out var wc, out var how);
+                if (!hasWc)
+                {
+                    notes.Add("Eq. (a) not evaluated: the material's unit mass/weight could not be read as a concrete density.");
+                }
+                else if (wc < ConcreteModulus.MinWcKgPerM3 || wc > ConcreteModulus.MaxWcKgPerM3)
+                {
+                    notes.Add($"Eq. (a) not applicable: wc = {wc:0} kg/m3 ({how}) is outside {ConcreteModulus.MinWcKgPerM3:0}-{ConcreteModulus.MaxWcKgPerM3:0} kg/m3.");
+                }
+                else
+                {
+                    eqA = ConcreteModulus.EquationA(wc, fc);
+                }
+
+                // Eq. (b): normalweight concrete only.
+                double? eqB = null;
+                if (material.IsLightweight) notes.Add("Eq. (b) not applicable: material is flagged lightweight.");
+                else eqB = ConcreteModulus.EquationB(fc);
+
+                if (eqA == null && eqB == null)
+                {
+                    yield return ValidationResult.Create(
+                        RuleId, Name, Category, Type, Severity.Low, ValidationStatus.NotChecked,
+                        "ConcreteMaterial", material.Name, material.Source, fieldName: "E1",
+                        actual: $"{actualE:0} MPa",
+                        message: $"Neither ACI 318-19 Ec equation could be applied to '{material.Name}'. " + string.Join(" ", notes),
+                        codeBasis: codeBasis);
+                    continue;
+                }
+
+                double Diff(double expected) => expected <= 0 ? double.PositiveInfinity : Math.Abs(actualE - expected) / expected * 100.0;
+                var diffA = eqA.HasValue ? Diff(eqA.Value) : double.PositiveInfinity;
+                var diffB = eqB.HasValue ? Diff(eqB.Value) : double.PositiveInfinity;
+                var bestIsA = diffA <= diffB;
+                var bestDiff = Math.Min(diffA, diffB);
+                var status = bestDiff <= TolerancePercent ? ValidationStatus.Pass : ValidationStatus.Warning;
+
+                var options = new List<string>();
+                var comparison = new List<string>();
+                if (eqA.HasValue)
+                {
+                    options.Add($"Eq.(a) {eqA.Value:0} MPa (wc {wc:0} kg/m3)");
+                    comparison.Add($"Eq. (a) {eqA.Value:0} MPa, diff {diffA:0.0}%");
+                }
+                if (eqB.HasValue)
+                {
+                    options.Add($"Eq.(b) {eqB.Value:0} MPa");
+                    comparison.Add($"Eq. (b) {eqB.Value:0} MPa, diff {diffB:0.0}%");
+                }
+
+                var matched = bestIsA
+                    ? $"Eq. (a) wc^1.5 x 0.043 x sqrt(fc) with wc = {wc:0} kg/m3 ({eqA.Value:0} MPa)"
+                    : $"Eq. (b) 4700 x sqrt(fc) ({eqB.Value:0} MPa)";
 
                 yield return ValidationResult.Create(
                     RuleId, Name, Category, Type, DefaultSeverity, status,
                     "ConcreteMaterial", material.Name, material.Source, fieldName: "E1",
-                    expected: $"{expectedE:0} MPa (ACI 318-19 Ec = 4700*sqrt(Fc'))", actual: $"{actualE:0} MPa",
+                    expected: string.Join(" or ", options) + $", +/-{TolerancePercent:0}%",
+                    actual: $"{actualE:0} MPa",
                     message: status == ValidationStatus.Pass
-                        ? $"E1 ({actualE:0} MPa) is within 5% of the ACI 318-19 normalweight Ec formula ({expectedE:0} MPa)."
-                        : $"E1 ({actualE:0} MPa) differs from the ACI 318-19 normalweight Ec formula ({expectedE:0} MPa) by {percentDiff:0.0}% - verify this is an intentional project override.",
+                        ? $"E1 ({actualE:0} MPa) matches ACI 318-19 {matched} within {bestDiff:0.0}%."
+                        : $"E1 ({actualE:0} MPa) differs from every applicable ACI 318-19 Ec equation by more than {TolerancePercent:0}% ({string.Join("; ", comparison)}) - verify this is an intentional project override.",
+                    technicalExplanation: $"fc = {fc:0.##} MPa. {string.Join("; ", comparison)}." +
+                                          (hasWc ? $" Density {how}." : "") +
+                                          (notes.Count > 0 ? " " + string.Join(" ", notes) : ""),
                     codeBasis: codeBasis);
             }
         }

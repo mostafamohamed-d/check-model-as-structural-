@@ -1,9 +1,12 @@
 using System;
+using System.Collections.Generic;
+using System.Drawing;
 using System.Linq;
 using System.Threading;
 using System.Windows.Forms;
 using ETABSModelDefinitionValidator.Core.Configuration;
 using ETABSModelDefinitionValidator.Core.Validation;
+using ETABSModelDefinitionValidator.EtabsApi;
 using ETABSModelDefinitionValidator.Reporting;
 using ETABSModelDefinitionValidator.Rules;
 
@@ -13,152 +16,251 @@ namespace ETABSModelDefinitionValidator.UI.WinForms
     {
         private readonly ComboBox _instanceCombo;
         private readonly Button _connectButton;
-        private readonly Label _connectionLabel;
-        private readonly TextBox _configPathBox;
-        private readonly CheckedListBox _categoryList;
+        private readonly ConnectionBadge _connection;
+        private readonly Button _profileButton;
+        private readonly ContextMenuStrip _profileMenu;
+        private readonly List<ToolStripMenuItem> _categoryItems = new List<ToolStripMenuItem>();
+        private readonly ToolStripMenuItem _configLabel;
+        private string _configPath;
         private readonly Button _runButton;
-        private readonly Button _saveTablesButton;
+        private readonly Button _exportButton;
+        private readonly ContextMenuStrip _exportMenu;
+        private readonly ToolStripMenuItem _exportCsvItem;
+        private readonly ToolStripMenuItem _saveTablesItem;
         private int? _connectedPid;
         private readonly TextBox _importLog;
-        private readonly TabControl _tabs;
-        private readonly TabPage _logTab;
-        private readonly Button _cancelButton;
-        private readonly Button _exportButton;
-        private readonly ProgressBar _progressBar;
-        private readonly SummaryPanel _summaryPanel;
+        private readonly TabStrip _tabs;
+        private readonly ActivityLine _activity;
+        private readonly Footer _footer;
+        private readonly StatusBand _band;
         private readonly FilterToolbar _filterToolbar;
         private readonly ResultsGridView _resultsGrid;
         private readonly ResultDetailPanel _detailPanel;
         private readonly ChecksExplainedPanel _checksPanel;
+        private readonly List<CheckTabPage> _checkTabs = new List<CheckTabPage>();
+        private readonly ToolStripMenuItem _groupsItem;
 
         private readonly ValidationRunner _runner = new ValidationRunner();
         private CancellationTokenSource _cts;
         private ValidationRunResult _lastRun;
+        private int _importProblems;
+
+        private const int ResultsTab = 0, LogTab = 2, FirstCheckTab = 3;
+
+        /// <summary>The model-object checks that get a tab of their own, in tab order.</summary>
+        private static readonly (string RuleId, string Title)[] CheckTabs =
+        {
+            (RuleIds.Geo001, "Wall geometry"),
+            (RuleIds.Geo002, "Column plumb"),
+            (RuleIds.Geo003, "Column continuity"),
+            (RuleIds.Geo004, "Pier labels"),
+            (RuleIds.Sup001, "Restraints"),
+            (RuleIds.Load003, "Line loads"),
+            (RuleIds.Load004, "Wall loads")
+        };
 
         public MainForm()
         {
             Text = "ETABS Model Definition Validator";
-            Width = 1300;
-            Height = 850;
+            Font = Theme.Body;
+            BackColor = Theme.Base;
             StartPosition = FormStartPosition.CenterScreen;
-            Font = new System.Drawing.Font("Segoe UI", 9f);
-            BackColor = System.Drawing.Color.FromArgb(245, 246, 248);
+            Size = new Size(this.S(1440), this.S(900));
+            MinimumSize = new Size(this.S(1000), this.S(640));
+            KeyPreview = true;
 
-            var header = new Label
+            // --- Toolbar: connect on the left, profile + run + export on the right ---
+            var toolbar = new Panel { Dock = DockStyle.Top, Height = this.S(56), BackColor = Theme.Chrome, Padding = new Padding(this.S(16), 0, this.S(16), 0) };
+
+            var title = new Label
             {
-                Text = "ETABS Model Definition Validator   |   QA/QC of model definitions against project and code rules",
-                Dock = DockStyle.Top, Height = 38, ForeColor = System.Drawing.Color.White,
-                BackColor = System.Drawing.Color.FromArgb(31, 56, 100),
-                Font = new System.Drawing.Font("Segoe UI Semibold", 11f),
-                TextAlign = System.Drawing.ContentAlignment.MiddleLeft, Padding = new Padding(10, 0, 0, 0)
+                Text = "Model Definition Validator", AutoSize = false, Dock = DockStyle.Left, Width = this.S(260),
+                Font = Theme.DisplayStrong(12.5f), ForeColor = Theme.ChromeText, TextAlign = ContentAlignment.MiddleLeft
             };
 
-            // --- ETABS connection row ---
-            var filePanel = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 5, Padding = new Padding(8) };
-            filePanel.Controls.Add(new Label { Text = "Running ETABS:", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
-            _instanceCombo = new ComboBox { Width = 500, DropDownStyle = ComboBoxStyle.DropDownList, Anchor = AnchorStyles.Left };
-            filePanel.Controls.Add(_instanceCombo, 1, 0);
-            var refresh = new Button { Text = "Refresh", AutoSize = true };
+            var left = ToolbarFlow(DockStyle.Fill); // fills what title and right leave, so it clips instead of overlapping
+            _instanceCombo = Theme.StyleCombo(new ComboBox { Width = this.S(260), DropDownStyle = ComboBoxStyle.DropDownList, Margin = new Padding(0, this.S(2), this.S(6), 0) });
+            var refresh = Theme.ChromeButton("Refresh");
             refresh.Click += (s, e) => RefreshInstances();
-            filePanel.Controls.Add(refresh, 2, 0);
-            _connectButton = new Button { Text = "Connect", AutoSize = true };
+            _connectButton = Theme.ChromeButton("Connect");
             _connectButton.Click += ConnectButton_Click;
-            filePanel.Controls.Add(_connectButton, 3, 0);
-            _connectionLabel = new Label { Text = "Not connected.", AutoSize = true, Anchor = AnchorStyles.Left, ForeColor = System.Drawing.Color.FromArgb(180, 0, 0) };
-            filePanel.Controls.Add(_connectionLabel, 4, 0);
+            _connection = new ConnectionBadge();
+            left.Controls.AddRange(new Control[] { _instanceCombo, refresh, _connectButton, _connection });
 
-            filePanel.Controls.Add(new Label { Text = "Config (optional):", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 1);
-            _configPathBox = new TextBox { Width = 500, Anchor = AnchorStyles.Left };
-            filePanel.Controls.Add(_configPathBox, 1, 1);
-            var browseConfig = new Button { Text = "Browse...", AutoSize = true };
-            browseConfig.Click += (s, e) => BrowseFor(_configPathBox, "JSON config (*.json)|*.json");
-            filePanel.Controls.Add(browseConfig, 2, 1);
-
-            // --- Category picker + run controls ---
-            var runPanel = new Panel { Dock = DockStyle.Top, Height = 150, Padding = new Padding(8, 0, 8, 8) };
-
-            var categoryLabel = new Label { Text = "Validation profile (categories to run):", AutoSize = true, Location = new System.Drawing.Point(8, 4) };
-            _categoryList = new CheckedListBox { Width = 240, Height = 110, CheckOnClick = true, Location = new System.Drawing.Point(8, 24) };
+            var right = ToolbarFlow(DockStyle.Right);
+            _profileMenu = new ContextMenuStrip { Font = Theme.Body, ShowCheckMargin = true, ShowImageMargin = false };
             foreach (var category in RuleRegistry.AllRules.Select(r => r.Category).Distinct().OrderBy(c => c))
             {
-                _categoryList.Items.Add(category, true);
+                var item = new ToolStripMenuItem(category) { Checked = true, CheckOnClick = true };
+                item.CheckedChanged += (s, e) => UpdateProfileButton();
+                _categoryItems.Add(item);
+                _profileMenu.Items.Add(item);
             }
-            runPanel.Controls.Add(categoryLabel);
-            runPanel.Controls.Add(_categoryList);
+            _profileMenu.Items.Add(new ToolStripSeparator());
+            _profileMenu.Items.Add("Check all categories", null, (s, e) => _categoryItems.ForEach(i => i.Checked = true));
+            _profileMenu.Items.Add(new ToolStripSeparator());
+            _configLabel = new ToolStripMenuItem("Thresholds: default profile") { Enabled = false };
+            _profileMenu.Items.Add(_configLabel);
+            _profileMenu.Items.Add("Load thresholds from file...", null, (s, e) => BrowseConfig());
+            _profileMenu.Items.Add("Use default thresholds", null, (s, e) => SetConfigPath(null));
+            // Keep the menu open while ticking categories on and off.
+            var keepOpen = false;
+            _profileMenu.ItemClicked += (s, e) => keepOpen = _categoryItems.Contains(e.ClickedItem);
+            _profileMenu.Closing += (s, e) => { if (keepOpen && e.CloseReason == ToolStripDropDownCloseReason.ItemClicked) e.Cancel = true; keepOpen = false; };
 
-            _runButton = new Button { Text = "Run Validation", Width = 140, Height = 32, Location = new System.Drawing.Point(260, 24), Enabled = false };
-            _runButton.Click += (s, e) => RunValidation();
-            _saveTablesButton = new Button { Text = "Save Extracted Tables...", Width = 170, Height = 32, Location = new System.Drawing.Point(632, 24), Enabled = false };
-            _saveTablesButton.Click += SaveTablesButton_Click;
-            runPanel.Controls.Add(_saveTablesButton);
-            _cancelButton = new Button { Text = "Cancel", Width = 90, Height = 32, Location = new System.Drawing.Point(408, 24), Enabled = false };
-            _cancelButton.Click += (s, e) => _cts?.Cancel();
-            _exportButton = new Button { Text = "Export CSV...", Width = 120, Height = 32, Location = new System.Drawing.Point(506, 24), Enabled = false };
-            _exportButton.Click += ExportButton_Click;
-            runPanel.Controls.Add(_runButton);
-            runPanel.Controls.Add(_cancelButton);
-            runPanel.Controls.Add(_exportButton);
+            _profileButton = Theme.ChromeButton("Profile");
+            _profileButton.Click += (s, e) => _profileMenu.Show(_profileButton, new Point(0, _profileButton.Height));
 
-            // --- Summary + filters ---
-            _summaryPanel = new SummaryPanel();
+            _runButton = Theme.ChromeButton("Run validation", primary: true);
+            _runButton.MinimumSize = new Size(this.S(130), 0);
+            _runButton.Enabled = false;
+            _runButton.Click += (s, e) => { if (_cts != null) _cts.Cancel(); else RunValidation(); };
+
+            _exportMenu = new ContextMenuStrip { Font = Theme.Body, ShowImageMargin = false };
+            _exportCsvItem = new ToolStripMenuItem("Export shown results to CSV...", null, ExportButton_Click) { ShortcutKeyDisplayString = "Ctrl+E", Enabled = false };
+            _saveTablesItem = new ToolStripMenuItem("Save tables read from ETABS...", null, SaveTablesButton_Click) { Enabled = false };
+            _groupsItem = new ToolStripMenuItem("Group failures of all checks in ETABS...", null, (s, e) => WriteFailureGroups(CheckTabs.Select(t => t.RuleId).ToList())) { Enabled = false };
+            _exportMenu.Items.Add(_exportCsvItem);
+            _exportMenu.Items.Add(_saveTablesItem);
+            _exportMenu.Items.Add(new ToolStripSeparator());
+            _exportMenu.Items.Add(_groupsItem);
+            _exportButton = Theme.ChromeButton("Export");
+            _exportButton.Click += (s, e) => _exportMenu.Show(_exportButton, new Point(0, _exportButton.Height));
+            _exportButton.Enabled = false;
+            right.Controls.AddRange(new Control[] { _profileButton, _runButton, _exportButton });
+
+            toolbar.Controls.Add(left);
+            toolbar.Controls.Add(right);
+            toolbar.Controls.Add(title);
+            UpdateProfileButton();
+
+            _activity = new ActivityLine();
+
+            // --- Verdict band ---
+            _band = new StatusBand();
+            _band.SegmentClicked += (category, status) =>
+            {
+                _tabs.SelectedIndex = ResultsTab;
+                _filterToolbar.Show(category, status);
+            };
+
+            // --- Results: filters, grid over detail ---
             _filterToolbar = new FilterToolbar();
             _filterToolbar.FilterChanged += (s, filter) =>
             {
                 _resultsGrid.ApplyFilter(filter);
-                UpdateStatusCounts();
+                UpdateCounts();
             };
 
-            // --- Results grid + detail split ---
-            var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterDistance = 480 };
+            var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, BackColor = Theme.Line, SplitterWidth = this.S(1) + 4 };
+            split.Panel1.BackColor = Theme.Surface;
+            split.Panel2.BackColor = Theme.Surface;
             _resultsGrid = new ResultsGridView();
             _resultsGrid.SelectionChanged += (s, result) => _detailPanel.SetResult(result);
             split.Panel1.Controls.Add(_resultsGrid);
             _detailPanel = new ResultDetailPanel();
             split.Panel2.Controls.Add(_detailPanel);
+            Load += (s, e) => split.SplitterDistance = (int)(split.Height * 0.55);
 
-            // --- Status strip ---
-            var statusStrip = new StatusStrip();
-            var statusToolLabel = new ToolStripStatusLabel { Text = "Ready.", Spring = true, TextAlign = System.Drawing.ContentAlignment.MiddleLeft };
-            var progressHost = new ToolStripControlHost(new ProgressBar { Width = 200, Style = ProgressBarStyle.Marquee, MarqueeAnimationSpeed = 0 });
-            _progressBar = (ProgressBar)progressHost.Control;
-            statusStrip.Items.Add(statusToolLabel);
-            statusStrip.Items.Add(progressHost);
-            _statusToolLabel = statusToolLabel;
-
-            // --- Assemble ---
-            var resultsTab = new TabPage("Results");
-            resultsTab.Controls.Add(split);
-            resultsTab.Controls.Add(_filterToolbar);
-            resultsTab.Controls.Add(_summaryPanel);
+            var resultsPage = new Panel { BackColor = Theme.Surface };
+            resultsPage.Controls.Add(split);
+            resultsPage.Controls.Add(_filterToolbar);
 
             _checksPanel = new ChecksExplainedPanel();
-            var checksTab = new TabPage("Checks Explained");
-            checksTab.Controls.Add(_checksPanel);
             _checksPanel.SetData(ConfigurationLoader.LoadDefault(), null);
 
             _importLog = new TextBox
             {
                 Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Both, WordWrap = false,
-                Font = new System.Drawing.Font("Consolas", 9f), BackColor = System.Drawing.Color.White
+                Font = Theme.Mono, BackColor = Theme.Surface, ForeColor = Theme.Ink, BorderStyle = BorderStyle.None,
+                Text = "The import log lists the ETABS tables read, any missing tables and import messages after a run."
             };
-            var logTab = new TabPage("Import Log");
-            logTab.Controls.Add(_importLog);
+            var logPage = new Panel { Padding = new Padding(this.S(20), this.S(14), this.S(8), this.S(8)), BackColor = Theme.Surface };
+            logPage.Controls.Add(_importLog);
 
-            _tabs = new TabControl { Dock = DockStyle.Fill };
-            var tabs = _tabs;
-            tabs.TabPages.Add(resultsTab);
-            tabs.TabPages.Add(checksTab);
-            tabs.TabPages.Add(logTab);
-            _logTab = logTab;
+            _tabs = new TabStrip();
+            _tabs.Add("Results", resultsPage);
+            _tabs.Add("Checks explained", _checksPanel);
+            _tabs.Add("Import log", logPage);
+            foreach (var (ruleId, tabTitle) in CheckTabs)
+            {
+                var page = new CheckTabPage(ruleId);
+                page.GroupRequested += (s, e) => WriteFailureGroups(new[] { page.RuleId });
+                _checkTabs.Add(page);
+                _tabs.Add(tabTitle, page);
+            }
+            _tabs.Badge = i =>
+            {
+                if (i == LogTab) return _importProblems > 0 ? _importProblems.ToString("N0") : null;
+                var check = i - FirstCheckTab;
+                return check >= 0 && check < _checkTabs.Count && _checkTabs[check].FailCount > 0 ? _checkTabs[check].FailCount.ToString("N0") : null;
+            };
 
-            Controls.Add(tabs);
-            Controls.Add(runPanel);
-            Controls.Add(filePanel);
-            Controls.Add(header);
-            Controls.Add(statusStrip);
+            _footer = new Footer();
+
+            // Dock order: last added docks first.
+            Controls.Add(_tabs.Host);
+            Controls.Add(_tabs);
+            Controls.Add(_band);
+            Controls.Add(_activity);
+            Controls.Add(toolbar);
+            Controls.Add(_footer);
 
             RefreshInstances();
         }
+
+        private FlowLayoutPanel ToolbarFlow(DockStyle dock) => new FlowLayoutPanel
+        {
+            Dock = dock, AutoSize = dock != DockStyle.Fill, WrapContents = false, BackColor = Theme.Chrome,
+            Padding = new Padding(0, this.S(13), 0, 0)
+        };
+
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            switch (keyData)
+            {
+                case Keys.F5:
+                    if (_cts == null && _runButton.Enabled) RunValidation();
+                    return true;
+                case Keys.Escape:
+                    if (_cts != null) { _cts.Cancel(); return true; }
+                    break;
+                case Keys.Control | Keys.F:
+                    _tabs.SelectedIndex = ResultsTab;
+                    _filterToolbar.FocusSearch();
+                    return true;
+                case Keys.Control | Keys.E:
+                    if (_exportCsvItem.Enabled) ExportButton_Click(this, EventArgs.Empty);
+                    return true;
+            }
+            return base.ProcessCmdKey(ref msg, keyData);
+        }
+
+        // --- Profile -----------------------------------------------------------------------
+
+        private void UpdateProfileButton()
+        {
+            var on = _categoryItems.Count(i => i.Checked);
+            _profileButton.Text = on == _categoryItems.Count ? $"Profile: all {on} categories  ▾"
+                : on == 0 ? "Profile: nothing selected  ▾"
+                : $"Profile: {on} of {_categoryItems.Count} categories  ▾";
+        }
+
+        private void BrowseConfig()
+        {
+            using (var dialog = new OpenFileDialog { Filter = "Validation profile (*.json)|*.json", Title = "Load thresholds from a validation profile" })
+            {
+                if (dialog.ShowDialog(this) == DialogResult.OK) SetConfigPath(dialog.FileName);
+            }
+        }
+
+        private void SetConfigPath(string path)
+        {
+            _configPath = path;
+            _configLabel.Text = path == null ? "Thresholds: default profile" : "Thresholds: " + System.IO.Path.GetFileName(path);
+        }
+
+        // --- ETABS connection --------------------------------------------------------------
 
         private sealed class EtabsInstance
         {
@@ -170,15 +272,17 @@ namespace ETABSModelDefinitionValidator.UI.WinForms
         private void RefreshInstances()
         {
             _instanceCombo.Items.Clear();
-            foreach (var p in ETABSModelDefinitionValidator.EtabsApi.EtabsSession.FindRunningEtabs())
+            foreach (var p in EtabsSession.FindRunningEtabs())
             {
-                var title = string.IsNullOrWhiteSpace(p.MainWindowTitle) ? "(no window title)" : p.MainWindowTitle;
-                _instanceCombo.Items.Add(new EtabsInstance { ProcessId = p.Id, Text = $"{title}   [pid {p.Id}]" });
+                var title = string.IsNullOrWhiteSpace(p.MainWindowTitle) ? "ETABS (no window title)" : p.MainWindowTitle;
+                // FindRunningEtabs lists instances with an open model first, so index 0 is the sensible default.
+                var notReady = EtabsSession.LooksReady(p) ? "" : "  [no model open?]";
+                _instanceCombo.Items.Add(new EtabsInstance { ProcessId = p.Id, Text = $"{title}  (pid {p.Id}){notReady}" });
             }
             if (_instanceCombo.Items.Count > 0) _instanceCombo.SelectedIndex = 0;
-            _statusToolLabel.Text = _instanceCombo.Items.Count == 0
-                ? "No running ETABS found. Open ETABS with your model, then click Refresh."
-                : $"{_instanceCombo.Items.Count} running ETABS instance(s) found. Select one and click Connect.";
+            _footer.Status = _instanceCombo.Items.Count == 0
+                ? "No running ETABS found. Open your model in ETABS, then press Refresh."
+                : $"Found {_instanceCombo.Items.Count} running ETABS. Pick one and press Connect.";
         }
 
         private async void ConnectButton_Click(object sender, EventArgs e)
@@ -186,126 +290,156 @@ namespace ETABSModelDefinitionValidator.UI.WinForms
             var instance = _instanceCombo.SelectedItem as EtabsInstance;
             if (instance == null)
             {
-                MessageBox.Show(this, "No running ETABS selected. Open ETABS with your model, then click Refresh.", "Not connected", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(this, "No running ETABS is selected. Open your model in ETABS, then press Refresh.", "Not connected", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
             _connectButton.Enabled = false;
-            _statusToolLabel.Text = $"Connecting to ETABS (pid {instance.ProcessId})...";
+            _activity.Running = true;
+            _footer.Status = $"Connecting to ETABS (pid {instance.ProcessId})...";
             try
             {
-                var session = await System.Threading.Tasks.Task.Run(() => ETABSModelDefinitionValidator.EtabsApi.EtabsSession.Attach(instance.ProcessId));
+                var session = await System.Threading.Tasks.Task.Run(() => EtabsSession.Attach(instance.ProcessId));
                 _connectedPid = session.ProcessId;
-                _connectionLabel.Text = $"Connected: {session.ModelName}  ({System.IO.Path.GetFileName(session.EtabsFolder)})";
-                _connectionLabel.ForeColor = System.Drawing.Color.FromArgb(0, 128, 0);
+                if (_lastRun?.EtabsProcessId != null && _lastRun.EtabsProcessId != session.ProcessId) DisableGrouping();
+                _connection.Set(true, session.ModelName);
                 _runButton.Enabled = true;
-                _statusToolLabel.Text = "Connected. Choose categories and click Run Validation.";
+                _footer.Status = $"Connected to {session.ModelName} ({System.IO.Path.GetFileName(session.EtabsFolder)}). Press Run validation or F5.";
             }
             catch (Exception ex)
             {
                 _connectedPid = null;
-                _connectionLabel.Text = "Not connected.";
-                _connectionLabel.ForeColor = System.Drawing.Color.FromArgb(180, 0, 0);
+                _connection.Set(false, "Not connected");
                 _runButton.Enabled = false;
-                _statusToolLabel.Text = "Connection failed.";
+                _footer.Status = "Could not connect to ETABS.";
                 MessageBox.Show(this, ex.Message, "Could not connect to ETABS", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             finally
             {
                 _connectButton.Enabled = true;
+                _activity.Running = false;
             }
         }
 
-        private ToolStripStatusLabel _statusToolLabel;
-
-        private static void BrowseFor(TextBox target, string filter)
-        {
-            using (var dialog = new OpenFileDialog { Filter = filter })
-            {
-                if (dialog.ShowDialog() == DialogResult.OK)
-                {
-                    target.Text = dialog.FileName;
-                }
-            }
-        }
+        // --- Run ---------------------------------------------------------------------------
 
         private async void RunValidation()
         {
             if (_connectedPid == null)
             {
-                MessageBox.Show(this, "Connect to a running ETABS first.", "Not connected", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(this, "Connect to a running ETABS model first.", "Not connected", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
-            var enabledCategories = _categoryList.CheckedItems.Cast<string>().ToList();
+            var enabledCategories = _categoryItems.Where(i => i.Checked).Select(i => i.Text).ToList();
             if (enabledCategories.Count == 0)
             {
-                MessageBox.Show(this, "Select at least one category to validate.", "Nothing to run", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(this, "The profile has no categories selected. Open Profile and tick at least one.", "Nothing to run", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
             ValidationProfileConfig config;
             try
             {
-                config = string.IsNullOrWhiteSpace(_configPathBox.Text)
-                    ? ConfigurationLoader.LoadDefault()
-                    : ConfigurationLoader.LoadFromFile(_configPathBox.Text);
+                config = _configPath == null ? ConfigurationLoader.LoadDefault() : ConfigurationLoader.LoadFromFile(_configPath);
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, $"Could not load config: {ex.Message}", "Config error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, $"The thresholds file could not be read: {ex.Message}", "Thresholds not loaded", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
 
             _cts = new CancellationTokenSource();
             SetRunning(true);
 
-            var progress = new Progress<string>(msg => _statusToolLabel.Text = msg);
+            var progress = new Progress<string>(msg => _footer.Status = msg);
 
             try
             {
-                _lastRun = await _runner.RunLiveAsync(config, enabledCategories, progress, _cts.Token, _connectedPid);
-
-                _detailPanel.SetConfig(config);
-                _checksPanel.SetData(config, _lastRun.Results);
-                _summaryPanel.SetSummary(ValidationSummary.From(_lastRun.Results));
-                _filterToolbar.SetAvailableCategories(_lastRun.Results.Select(r => r.Category));
-                _resultsGrid.SetResults(_lastRun.Results);
-                UpdateStatusCounts();
-                _exportButton.Enabled = true;
-                _saveTablesButton.Enabled = _lastRun.ExtractedTables != null;
-
-                _importLog.Text = BuildImportLog(_lastRun);
-                var problems = _lastRun.Model.ImportIssues.Count(i => i.Level != ETABSModelDefinitionValidator.Core.Model.ImportIssueLevel.Info);
-                if (problems > 0)
-                {
-                    _statusToolLabel.Text += $"  ({problems} import problem(s) - see the Import Log tab)";
-                    if (_lastRun.Results.Count == 0 || (_lastRun.ExtractedTables?.Count ?? 0) == 0) _tabs.SelectedTab = _logTab;
-                }
+                ShowRun(await _runner.RunLiveAsync(config, enabledCategories, progress, _cts.Token, _connectedPid), config);
             }
             catch (OperationCanceledException)
             {
-                _statusToolLabel.Text = "Cancelled.";
+                _footer.Status = "Run cancelled. Results from the previous run are still shown.";
             }
             catch (Exception ex)
             {
-                _statusToolLabel.Text = "Failed.";
+                _footer.Status = "Run failed.";
                 MessageBox.Show(this, ex.Message, "Validation failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             finally
             {
-                SetRunning(false);
                 _cts?.Dispose();
                 _cts = null;
+                SetRunning(false);
             }
+        }
+
+        /// <summary>Puts a finished run on screen. Public so a run can be shown without ETABS
+        /// (e.g. from an Excel export in a harness).</summary>
+        public void ShowRun(ValidationRunResult run, ValidationProfileConfig config)
+        {
+            _lastRun = run;
+            var summary = run.Summary ?? ValidationSummary.From(run.Results, run.Model, null, config?.Reporting);
+
+            _detailPanel.SetConfig(config);
+            _checksPanel.SetData(config, run.Results);
+            _band.SetSummary(summary);
+            _filterToolbar.SetCounts(summary);
+            _filterToolbar.SetAvailableCategories(run.Results.Select(r => r.Category));
+            _resultsGrid.SetResults(run.Results);
+            _resultsGrid.ApplyFilter(_filterToolbar.CurrentFilter);
+            _exportButton.Enabled = true;
+            _exportCsvItem.Enabled = true;
+            _saveTablesItem.Enabled = run.ExtractedTables != null;
+            var live = run.EtabsProcessId != null;
+            foreach (var tab in _checkTabs) tab.SetRun(run.Results, config, live);
+            _groupsItem.Enabled = live && run.Results.Any(r => FailureGroups.For(r.RuleId) != null && r.Status != ValidationStatus.NotChecked);
+
+            _importLog.Text = BuildImportLog(run);
+            _importProblems = run.Model.ImportIssues.Count(i => i.Level != ETABSModelDefinitionValidator.Core.Model.ImportIssueLevel.Info);
+            _tabs.Invalidate();
+
+            _footer.Status = _importProblems > 0
+                ? $"Run finished with {_importProblems:N0} import problem(s). See the Import log tab."
+                : $"Run finished. {summary.TotalCount:N0} results from {run.Results.Select(r => r.RuleId).Distinct().Count()} checks.";
+            UpdateCounts();
+            if (_importProblems > 0 && (run.Results.Count == 0 || (run.ExtractedTables?.Count ?? 0) == 0)) _tabs.SelectedIndex = LogTab;
         }
 
         private static string BuildImportLog(ValidationRunResult run)
         {
             var sb = new System.Text.StringBuilder();
             sb.AppendLine($"Source: {run.Model.WorkbookName}");
+
+            var a = run.Summary?.Assessment;
+            if (a != null)
+            {
+                sb.AppendLine();
+                sb.AppendLine($"RUN VERDICT: {RunAssessment.Label(a.Verdict)}" +
+                              (a.CategoriesTotal > 0 ? $"   ({a.CategoriesRun} of {a.CategoriesTotal} categories enabled)" : ""));
+                foreach (var r in a.FailReasons) sb.AppendLine("  [Fail] " + r);
+                foreach (var r in a.IncompleteReasons) sb.AppendLine("  [Incomplete] " + r);
+                foreach (var r in a.ReviewReasons) sb.AppendLine("  [Review] " + r);
+            }
+            if (run.ConfigIssues != null && run.ConfigIssues.Count > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine("Profile warnings");
+                foreach (var i in run.ConfigIssues) sb.AppendLine("  " + i);
+            }
+
             sb.AppendLine();
-            sb.AppendLine("TABLES READ FROM ETABS");
+            sb.AppendLine("Import state per table (Read / ReadEmpty / Partial / SchemaInvalid / FailedToRead / Ambiguous / Missing / Skipped / Unrecognized)");
+            foreach (var t in run.Model.TableReports.Values.OrderBy(t => t.State == ETABSModelDefinitionValidator.Core.Model.TableImportState.Read ? 1 : 0).ThenBy(t => t.Title))
+            {
+                sb.AppendLine("  " + t);
+                foreach (var m in t.Messages.Take(5)) sb.AppendLine("      " + m);
+                if (t.Messages.Count > 5) sb.AppendLine($"      ... {t.Messages.Count - 5} more");
+            }
+
+            sb.AppendLine();
+            sb.AppendLine("Tables read from ETABS");
             if (run.ExtractedTables == null || run.ExtractedTables.Count == 0) sb.AppendLine("  (none)");
             else foreach (var t in run.ExtractedTables)
             {
@@ -314,19 +448,19 @@ namespace ETABSModelDefinitionValidator.UI.WinForms
             }
 
             sb.AppendLine();
-            sb.AppendLine("MISSING TABLES (their checks show NOT CHECKED)");
+            sb.AppendLine("Missing tables (their checks show Not checked)");
             if (run.Model.MissingTables.Count == 0) sb.AppendLine("  (none)");
             else foreach (var m in run.Model.MissingTables) sb.AppendLine("  " + m);
 
             sb.AppendLine();
-            sb.AppendLine("MESSAGES");
+            sb.AppendLine("Messages");
             if (run.Model.ImportIssues.Count == 0) sb.AppendLine("  (none)");
             else foreach (var i in run.Model.ImportIssues) sb.AppendLine($"  [{i.Level}] {i.Message}");
 
             if (run.EtabsTables != null && run.EtabsTables.Count > 0)
             {
                 sb.AppendLine();
-                sb.AppendLine($"ALL TABLES ETABS OFFERS FOR THIS MODEL ({run.EtabsTables.Count})");
+                sb.AppendLine($"All tables ETABS offers for this model ({run.EtabsTables.Count})");
                 foreach (var t in run.EtabsTables.OrderBy(t => t.Name)) sb.AppendLine("  " + t.Name);
             }
 
@@ -335,32 +469,88 @@ namespace ETABSModelDefinitionValidator.UI.WinForms
 
         private void SetRunning(bool running)
         {
-            _runButton.Enabled = !running && _connectedPid != null;
+            _activity.Running = running;
+            _runButton.Text = running ? "Cancel (Esc)" : "Run validation";
+            _runButton.Enabled = running || _connectedPid != null;
             _connectButton.Enabled = !running;
-            _cancelButton.Enabled = running;
-            _progressBar.MarqueeAnimationSpeed = running ? 30 : 0;
-            if (!running && _lastRun == null) _statusToolLabel.Text = "Ready.";
+            _profileButton.Enabled = !running;
+            foreach (var tab in _checkTabs) tab.SetBusy(running);
         }
 
-        private void UpdateStatusCounts()
+        // --- ETABS failure groups ------------------------------------------------------------
+
+        /// <summary>The shown results belong to another ETABS instance than the one now connected:
+        /// grouping stays off until the next run, so names from one model never land in another.</summary>
+        private void DisableGrouping()
         {
-            _statusToolLabel.Text = $"Showing {_resultsGrid.VisibleCount:N0} of {_resultsGrid.TotalCount:N0} result(s).";
+            _groupsItem.Enabled = false;
+            foreach (var tab in _checkTabs) tab.DisableGrouping();
+            _footer.Status = "Connected to a different ETABS than the shown results came from - run again to group failures.";
         }
+
+        /// <summary>Writes the failing objects of the given checks into their VChk_* groups in the
+        /// connected model, after the user confirms - this is the only action that changes the model.</summary>
+        private async void WriteFailureGroups(IReadOnlyList<string> ruleIds)
+        {
+            if (_lastRun?.EtabsProcessId == null || _cts != null) return;
+
+            // Only checks that actually ran: a NOT_CHECKED check must not empty a group it never evaluated.
+            var ran = ruleIds.Where(id => _lastRun.Results.Any(r => r.RuleId == id && r.Status != ValidationStatus.NotChecked)).ToList();
+            var groups = ValidationRunner.BuildFailureGroups(_lastRun.Results, ran);
+            if (groups.Count == 0) return;
+
+            var lines = groups.Select(g => $"  {g.Key}: {g.Value.Count:N0} object(s)" + (g.Value.Count == 0 ? " (emptied if it exists)" : ""));
+            var answer = MessageBox.Show(this,
+                $"This changes the ETABS model {System.IO.Path.GetFileName(_lastRun.EtabsModelPath)} (pid {_lastRun.EtabsProcessId}) - the model these results were read from: each group below is emptied and then filled with the objects that failed its check, shown in red.\n\n" +
+                string.Join("\n", lines) + "\n\nNothing else in the model is touched. Continue?",
+                "Group failures in ETABS", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2);
+            if (answer != DialogResult.Yes) return;
+
+            _groupsItem.Enabled = false;
+            foreach (var tab in _checkTabs) tab.SetBusy(true);
+            _activity.Running = true;
+            _footer.Status = "Writing failure groups to ETABS...";
+            try
+            {
+                var written = await _runner.WriteFailureGroupsAsync(_lastRun, ran);
+                var text = written.Count == 0 ? "No groups needed writing." : string.Join("\n", written.Select(w => w.ToString()));
+                _footer.Notify("Failure groups written to ETABS. Select them with Select > Select > Groups.");
+                MessageBox.Show(this, text + "\n\nIn ETABS: Select > Select > Groups.", "Groups written", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                _footer.Status = "Writing groups failed.";
+                MessageBox.Show(this, ex.Message, "Groups not written", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                _activity.Running = false;
+                _groupsItem.Enabled = _lastRun?.EtabsProcessId == _connectedPid;
+                foreach (var tab in _checkTabs) tab.SetBusy(false);
+            }
+        }
+
+        private void UpdateCounts()
+        {
+            _footer.Right = $"Showing {_resultsGrid.VisibleCount:N0} of {_resultsGrid.TotalCount:N0} results";
+        }
+
+        // --- Export ------------------------------------------------------------------------
 
         private void SaveTablesButton_Click(object sender, EventArgs e)
         {
             if (_lastRun?.ExtractedTables == null) return;
             using (var dialog = new FolderBrowserDialog { Description = "Folder for the tables read from ETABS (one CSV per table)" })
             {
-                if (dialog.ShowDialog() != DialogResult.OK) return;
+                if (dialog.ShowDialog(this) != DialogResult.OK) return;
                 try
                 {
-                    var files = ETABSModelDefinitionValidator.EtabsApi.ExtractedTableWriter.WriteAll(dialog.SelectedPath, _lastRun.ExtractedTables, _lastRun.EtabsTables);
-                    MessageBox.Show(this, $"Saved {files.Count} file(s) to:\n{dialog.SelectedPath}", "Tables saved", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    var files = ExtractedTableWriter.WriteAll(dialog.SelectedPath, _lastRun.ExtractedTables, _lastRun.EtabsTables);
+                    _footer.Notify($"Saved {files.Count} table file(s) to {dialog.SelectedPath}");
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show(this, $"Could not save tables: {ex.Message}", "Save error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show(this, $"The tables could not be saved: {ex.Message}", "Tables not saved", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
         }
@@ -371,16 +561,16 @@ namespace ETABSModelDefinitionValidator.UI.WinForms
 
             using (var dialog = new SaveFileDialog { Filter = "CSV files (*.csv)|*.csv", FileName = "validation-report.csv" })
             {
-                if (dialog.ShowDialog() != DialogResult.OK) return;
+                if (dialog.ShowDialog(this) != DialogResult.OK) return;
 
                 try
                 {
                     CsvReportWriter.WriteToFile(_resultsGrid.CurrentView, dialog.FileName);
-                    MessageBox.Show(this, $"Exported {_resultsGrid.CurrentView.Count:N0} row(s) to:\n{dialog.FileName}", "Export complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    _footer.Notify($"Exported {_resultsGrid.CurrentView.Count:N0} results to {dialog.FileName}");
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show(this, $"Export failed: {ex.Message}", "Export error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show(this, $"The CSV could not be written: {ex.Message}", "Export failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
         }

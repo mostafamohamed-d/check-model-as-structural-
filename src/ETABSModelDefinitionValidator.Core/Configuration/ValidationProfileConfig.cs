@@ -18,10 +18,13 @@ namespace ETABSModelDefinitionValidator.Core.Configuration
         public DiaphragmRulesConfig Diaphragm { get; set; } = new DiaphragmRulesConfig();
         public FrameRulesConfig Frames { get; set; } = new FrameRulesConfig();
         public LoadPatternRulesConfig Loads { get; set; } = new LoadPatternRulesConfig();
-        public LoadCaseRulesConfig LoadCases { get; set; } = new LoadCaseRulesConfig();
         public ColumnOverwriteRulesConfig ColumnOverwrites { get; set; } = new ColumnOverwriteRulesConfig();
         public RebarMaterialRulesConfig RebarMaterials { get; set; } = new RebarMaterialRulesConfig();
         public ConcreteMaterialRulesConfig ConcreteMaterials { get; set; } = new ConcreteMaterialRulesConfig();
+        public GeometryRulesConfig Geometry { get; set; } = new GeometryRulesConfig();
+
+        /// <summary>How results roll up into the run verdict (what blocks a PASS).</summary>
+        public ReportingRulesConfig Reporting { get; set; } = new ReportingRulesConfig();
     }
 
     public sealed class WallRulesConfig
@@ -91,11 +94,6 @@ namespace ETABSModelDefinitionValidator.Core.Configuration
         public double RequiredSelfWeightMultiplier { get; set; } = 1.0;
     }
 
-    public sealed class LoadCaseRulesConfig
-    {
-        public bool WarnIfLoadNameDoesNotContainCaseName { get; set; } = true;
-    }
-
     public sealed class ColumnOverwriteRulesConfig
     {
         public string RequiredDesignSection { get; set; } = "Program Determined";
@@ -128,5 +126,48 @@ namespace ETABSModelDefinitionValidator.Core.Configuration
     public sealed class ConcreteMaterialRulesConfig
     {
         public double FcToleranceMpa { get; set; } = 0.5;
+    }
+
+    /// <summary>Thresholds of the geometry, connectivity, support and load-assignment checks
+    /// (GEO-*, SUP-001, LOAD-003/004). Lengths are in mm, the units models are read in.</summary>
+    public sealed class GeometryRulesConfig
+    {
+        /// <summary>GEO-001 / SUP-001: points closer than this are the same point / same elevation.
+        /// 0 = exact match. The column plumb and continuity checks never use a tolerance.</summary>
+        public double CoordinateToleranceMm { get; set; } = 0.0;
+
+        /// <summary>GEO-004: two wall panels of one pier label touch when any of their corners are
+        /// within this distance in plan. Meshed panels share corners that are only nominally identical,
+        /// so an exact match would split every pier.</summary>
+        public double PierAdjacencyToleranceMm { get; set; } = 20.0;
+
+        /// <summary>SUP-001: a model whose file name contains any of these (case-insensitive) is a
+        /// foundation model - the raft sits on springs, so no joint may be restrained.</summary>
+        public List<string> FoundationModelNameTokens { get; set; } = new List<string> { "fnd" };
+    }
+
+    /// <summary>
+    /// What a run must achieve to be reported PASS. The defaults are deliberately strict: a check
+    /// that did not run, an exemption, or an empty table never counts as verified unless the
+    /// approved project profile says so explicitly.
+    /// </summary>
+    public sealed class ReportingRulesConfig
+    {
+        /// <summary>WARNING results at or above this severity (Low, Medium, High, Critical) need an
+        /// engineer's review before the run can pass. Lower-severity warnings give PASS_WITH_WARNINGS.</summary>
+        public string ReviewSeverity { get; set; } = "High";
+
+        /// <summary>When false (default) any EXEMPT result makes the run REVIEW_REQUIRED: an exemption
+        /// means "not checked automatically", not "verified". Set true only when the project profile has
+        /// an approved, documented basis for every exemption rule it uses.</summary>
+        public bool AcceptExemptions { get; set; }
+
+        /// <summary>Rule ids whose NOT_CHECKED results do not make the run INCOMPLETE (they are still
+        /// listed). Default empty: every enabled rule is required.</summary>
+        public List<string> OptionalRules { get; set; } = new List<string>();
+
+        /// <summary>Table titles that may legitimately be read with zero records without needing review
+        /// (e.g. a model with no diaphragms). Default empty.</summary>
+        public List<string> AllowedEmptyTables { get; set; } = new List<string>();
     }
 }

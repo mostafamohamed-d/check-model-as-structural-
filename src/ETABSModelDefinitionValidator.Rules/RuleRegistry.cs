@@ -25,7 +25,14 @@ namespace ETABSModelDefinitionValidator.Rules
             new FrameAutoMeshRule(),
             new FrameEndOffsetRule(),
             new ColumnDesignSectionRule(),
-            new DiaphragmRigidityRule()
+            new DiaphragmRigidityRule(),
+            new WallGeometryRule(),
+            new ColumnPlumbRule(),
+            new ColumnContinuityRule(),
+            new PierContinuityRule(),
+            new JointRestraintRule(),
+            new LineLoadDirectionRule(),
+            new WallLoadRule()
         };
     }
 }

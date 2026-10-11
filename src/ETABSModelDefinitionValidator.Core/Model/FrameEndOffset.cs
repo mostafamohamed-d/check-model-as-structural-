@@ -6,7 +6,6 @@ namespace ETABSModelDefinitionValidator.Core.Model
         public string Story { get; set; }
         public string Label { get; set; }
         public string UniqueName { get; set; }
-        public string OffsetOption { get; set; }
         public double OffsetIMm { get; set; }
         public double OffsetJMm { get; set; }
     }

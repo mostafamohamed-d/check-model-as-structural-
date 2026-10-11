@@ -60,9 +60,17 @@ namespace ETABSModelDefinitionValidator.Tests
         [Fact]
         public void Live_style_tables_produce_modeldata_and_rules_run_on_it()
         {
-            // 0.35 modifier on an ordinary wall: WALL-003 must FAIL; WALL-001 must PASS (300 mm).
-            var data = new[] { "W300-C40", "C40/50", "300", "0.35" };
-            var table = ApiTableConverter.Convert(KnownTables.WallPropertyDefinitionsSpecified, Keys, Names, 1, data);
+            // 0.35 m11 modifier on an ordinary wall: WALL-003 must FAIL; WALL-001 must PASS (300 mm).
+            // Full set of wall columns - a table missing required columns is schema-invalid (see EX05).
+            var keys = new[] { "Name", "Material", "WallThickness", "f11Mod", "f22Mod", "f12Mod", "m11Mod", "m22Mod", "m12Mod" };
+            var names = new Dictionary<string, string>
+            {
+                ["Name"] = "Name", ["Material"] = "Material", ["WallThickness"] = "Wall Thickness",
+                ["f11Mod"] = "f11 Modifier", ["f22Mod"] = "f22 Modifier", ["f12Mod"] = "f12 Modifier",
+                ["m11Mod"] = "m11 Modifier", ["m22Mod"] = "m22 Modifier", ["m12Mod"] = "m12 Modifier"
+            };
+            var data = new[] { "W300-C40", "C40/50", "300", "0.7", "0.7", "0.7", "0.35", "0.7", "0.7" };
+            var table = ApiTableConverter.Convert(KnownTables.WallPropertyDefinitionsSpecified, keys, names, 1, data);
 
             var model = ETABSModelDefinitionValidator.Excel.ExcelModelDataProvider.FromTables("test (live ETABS)", new List<RawTable> { table });
 

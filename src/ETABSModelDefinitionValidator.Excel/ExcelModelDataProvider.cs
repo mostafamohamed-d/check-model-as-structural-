@@ -81,15 +81,36 @@ namespace ETABSModelDefinitionValidator.Excel
         private void PopulateModel(ModelData model, IReadOnlyList<RawTable> tables)
         {
             {
-                var byTitle = tables
-                    .GroupBy(t => t.TableTitle, StringComparer.OrdinalIgnoreCase)
-                    .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+                // A title that appears twice is ambiguous: which copy is right is unknown, so neither is used.
+                var groups = tables.GroupBy(t => t.TableTitle, StringComparer.OrdinalIgnoreCase).ToList();
+                var byTitle = new Dictionary<string, RawTable>(StringComparer.OrdinalIgnoreCase);
+                foreach (var g in groups)
+                {
+                    var copies = g.ToList();
+                    if (copies.Count == 1)
+                    {
+                        byTitle[g.Key] = copies[0];
+                        continue;
+                    }
 
-                foreach (var table in tables)
+                    var report = new TableImportReport { Title = g.Key, State = TableImportState.Ambiguous, RecordCount = copies.Sum(c => c.Rows.Count) };
+                    var where = string.Join(", ", copies.Select(c => $"'{c.WorksheetName}'"));
+                    report.Messages.Add($"Table appears {copies.Count} times (worksheets {where}); neither copy was used.");
+                    model.TableReports[g.Key] = report;
+                    model.ImportIssues.Add(new ImportIssue
+                    {
+                        Level = ImportIssueLevel.Error,
+                        Message = $"Table '{g.Key}' appears {copies.Count} times in the source (worksheets {where}). It was not used; rules depending on it report NOT_CHECKED.",
+                        Source = new SourceLocation { WorkbookName = model.WorkbookName, WorksheetName = copies[0].WorksheetName, TableName = g.Key, RowNumber = -1 }
+                    });
+                }
+
+                foreach (var table in byTitle.Values)
                 {
                     if (table.RowsSkipped)
                     {
                         model.SkippedTables.Add(table.TableTitle);
+                        model.TableReports[table.TableTitle] = new TableImportReport { Title = table.TableTitle, State = TableImportState.Skipped };
                     }
                 }
 
@@ -113,8 +134,6 @@ namespace ETABSModelDefinitionValidator.Excel
                     (t, m) => PopulateLoadPatterns(t, m));
                 PopulateIfPresent(byTitle, KnownTables.LoadCaseDefinitionsLinearStatic, model, recognized,
                     (t, m) => PopulateLoadCasesLinearStatic(t, m));
-                PopulateIfPresent(byTitle, KnownTables.FrameAssignmentsPropertyModifiers, model, recognized,
-                    (t, m) => PopulateFramePropertyModifiers(t, m));
                 PopulateIfPresent(byTitle, KnownTables.FrameAssignmentsFrameAutoMeshOptions, model, recognized,
                     (t, m) => PopulateFrameAutoMesh(t, m));
                 PopulateIfPresent(byTitle, KnownTables.FrameAssignmentsEndLengthOffsets, model, recognized,
@@ -123,10 +142,30 @@ namespace ETABSModelDefinitionValidator.Excel
                     (t, m) => PopulateDiaphragms(t, m));
                 PopulateIfPresent(byTitle, KnownTables.ConcreteColumnOverwritesAci31819, model, recognized,
                     (t, m) => PopulateColumnOverwrites(t, m));
+                PopulateIfPresent(byTitle, KnownTables.PointObjectConnectivity, model, recognized,
+                    (t, m) => PopulatePoints(t, m));
+                PopulateIfPresent(byTitle, KnownTables.WallObjectConnectivity, model, recognized,
+                    (t, m) => PopulateAreaObjects(t, m, "WallBay", m.WallObjects));
+                PopulateIfPresent(byTitle, KnownTables.FloorObjectConnectivity, model, recognized,
+                    (t, m) => PopulateAreaObjects(t, m, "FloorBay", m.FloorObjects));
+                PopulateIfPresent(byTitle, KnownTables.AreaAssignmentsPierLabels, model, recognized,
+                    (t, m) => PopulatePierLabels(t, m));
+                PopulateIfPresent(byTitle, KnownTables.ColumnObjectConnectivity, model, recognized,
+                    (t, m) => PopulateFrames(t, m, "ColumnBay", FrameKind.Column));
+                PopulateIfPresent(byTitle, KnownTables.BeamObjectConnectivity, model, recognized,
+                    (t, m) => PopulateFrames(t, m, "BeamBay", FrameKind.Beam));
+                PopulateIfPresent(byTitle, KnownTables.LinkObjectConnectivity, model, recognized,
+                    (t, m) => PopulateLinks(t, m));
+                PopulateIfPresent(byTitle, KnownTables.JointAssignmentsRestraints, model, recognized,
+                    (t, m) => PopulateRestraints(t, m));
+                PopulateIfPresent(byTitle, KnownTables.AreaLoadAssignmentsUniformLoadSets, model, recognized,
+                    (t, m) => PopulateAreaLoadSets(t, m));
+                PopulateIfPresent(byTitle, KnownTables.TowerAndBaseStoryDefinitions, model, recognized,
+                    (t, m) => PopulateBaseElevation(t, m));
 
                 foreach (var required in KnownTables.RequiredForInitialRuleSet)
                 {
-                    if (!byTitle.ContainsKey(required))
+                    if (!byTitle.ContainsKey(required) && model.GetTableReport(required)?.State != TableImportState.Ambiguous)
                     {
                         model.MissingTables.Add(required);
                         model.ImportIssues.Add(new ImportIssue
@@ -138,11 +177,13 @@ namespace ETABSModelDefinitionValidator.Excel
                     }
                 }
 
-                foreach (var table in tables)
+                foreach (var title in byTitle.Keys)
                 {
-                    if (!recognized.Contains(table.TableTitle))
+                    if (!recognized.Contains(title))
                     {
-                        model.UnrecognizedTables.Add(table.TableTitle);
+                        model.UnrecognizedTables.Add(title);
+                        // Unrecognized outranks Skipped: no check ever reads this table, whatever the profile.
+                        model.TableReports[title] = new TableImportReport { Title = title, State = TableImportState.Unrecognized, RecordCount = byTitle[title].Rows.Count };
                     }
                 }
             }
@@ -153,21 +194,49 @@ namespace ETABSModelDefinitionValidator.Excel
             Action<RawTable, ModelData> populate)
         {
             recognized.Add(title);
-            if (byTitle.TryGetValue(title, out var table))
+
+            if (model.TableReports.TryGetValue(title, out var existing) &&
+                (existing.State == TableImportState.Ambiguous || existing.State == TableImportState.Skipped))
             {
-                try
+                return; // already decided: not usable / deliberately not read
+            }
+
+            if (!byTitle.TryGetValue(title, out var table))
+            {
+                model.TableReports[title] = new TableImportReport { Title = title, State = TableImportState.Missing };
+                return;
+            }
+
+            var (accepted, report) = TableValidator.Validate(table, TableSchemas.For(title));
+            model.TableReports[title] = report;
+            if (report.Messages.Count > 0 && report.State != TableImportState.Read && report.State != TableImportState.ReadEmpty)
+            {
+                model.ImportIssues.Add(new ImportIssue
                 {
-                    populate(table, model);
-                }
-                catch (Exception ex)
+                    Level = report.IsUsable ? ImportIssueLevel.Warning : ImportIssueLevel.Error,
+                    Message = $"Table '{title}' {report.State}: {report.AcceptedCount} of {report.RecordCount} record(s) accepted. " + string.Join(" ", report.Messages.Take(10)) +
+                              (report.Messages.Count > 10 ? $" (+{report.Messages.Count - 10} more)" : "") +
+                              (report.IsUsable ? " Rejected records were not validated." : " Rules depending on it report NOT_CHECKED."),
+                    Source = new SourceLocation { WorkbookName = model.WorkbookName, WorksheetName = table.WorksheetName, TableName = title, RowNumber = -1 }
+                });
+            }
+
+            if (!report.IsUsable) return;
+
+            try
+            {
+                populate(accepted, model);
+            }
+            catch (Exception ex)
+            {
+                report.State = TableImportState.FailedToRead;
+                report.Messages.Add("Parsing failed: " + ex.Message);
+                model.ImportIssues.Add(new ImportIssue
                 {
-                    model.ImportIssues.Add(new ImportIssue
-                    {
-                        Level = ImportIssueLevel.Error,
-                        Message = $"Failed to parse table '{title}': {ex.Message}",
-                        Source = new SourceLocation { WorkbookName = model.WorkbookName, WorksheetName = table.WorksheetName, TableName = title, RowNumber = -1 }
-                    });
-                }
+                    Level = ImportIssueLevel.Error,
+                    Message = $"Failed to parse table '{title}': {ex.Message} Rules depending on it report NOT_CHECKED.",
+                    Source = new SourceLocation { WorkbookName = model.WorkbookName, WorksheetName = table.WorksheetName, TableName = title, RowNumber = -1 }
+                });
             }
         }
 
@@ -190,7 +259,6 @@ namespace ETABSModelDefinitionValidator.Excel
                 {
                     Source = Loc(model, table, row),
                     Name = name,
-                    ModelingType = row.GetString("ModelingType"),
                     Material = row.GetString("Material"),
                     ThicknessMm = row.GetDouble("WallThickness"),
                     F11Modifier = row.GetDouble("F11Modifier", 1),
@@ -199,10 +267,6 @@ namespace ETABSModelDefinitionValidator.Excel
                     M11Modifier = row.GetDouble("M11Modifier", 1),
                     M22Modifier = row.GetDouble("M22Modifier", 1),
                     M12Modifier = row.GetDouble("M12Modifier", 1),
-                    V13Modifier = row.GetDouble("V13Modifier", 1),
-                    V23Modifier = row.GetDouble("V23Modifier", 1),
-                    MassModifier = row.GetDouble("MassModifier", 1),
-                    WeightModifier = row.GetDouble("WeightModifier", 1)
                 });
             }
         }
@@ -218,8 +282,6 @@ namespace ETABSModelDefinitionValidator.Excel
                 {
                     Source = Loc(model, table, row),
                     Name = name,
-                    ModelingType = row.GetString("ModelingType"),
-                    PropertyType = row.GetString("PropertyType"),
                     Material = row.GetString("Material"),
                     ThicknessMm = row.GetDouble("SlabThickness"),
                     F11Modifier = row.GetDouble("F11Modifier", 1),
@@ -228,10 +290,6 @@ namespace ETABSModelDefinitionValidator.Excel
                     M11Modifier = row.GetDouble("M11Modifier", 1),
                     M22Modifier = row.GetDouble("M22Modifier", 1),
                     M12Modifier = row.GetDouble("M12Modifier", 1),
-                    V13Modifier = row.GetDouble("V13Modifier", 1),
-                    V23Modifier = row.GetDouble("V23Modifier", 1),
-                    MassModifier = row.GetDouble("MassModifier", 1),
-                    WeightModifier = row.GetDouble("WeightModifier", 1)
                 });
             }
         }
@@ -325,9 +383,6 @@ namespace ETABSModelDefinitionValidator.Excel
                     UnitWeightKnPerM3 = row.GetDouble("UnitWeight"),
                     UnitMassKgPerM3 = row.GetDouble("UnitMass"),
                     E1Mpa = row.GetDouble("E1"),
-                    G12Mpa = row.GetDouble("G12"),
-                    PoissonRatio = row.GetDouble("U12"),
-                    ThermalCoefficientPerC = row.GetDouble("A1")
                 };
 
                 var material = model.ConcreteMaterials.FirstOrDefault(m => string.Equals(m.Name, name, StringComparison.OrdinalIgnoreCase));
@@ -349,7 +404,6 @@ namespace ETABSModelDefinitionValidator.Excel
                 {
                     Source = Loc(model, table, row),
                     Name = name,
-                    IsAutoLoad = row.GetYesNoBool("IsAutoLoad"),
                     Type = row.GetString("Type"),
                     SelfWeightMultiplier = row.GetDouble("SelfWeightMultiplier")
                 });
@@ -369,32 +423,6 @@ namespace ETABSModelDefinitionValidator.Excel
                     Name = name,
                     LoadType = row.GetString("LoadType"),
                     LoadName = row.GetString("LoadName"),
-                    LoadScaleFactor = row.GetDouble("LoadSF", 1)
-                });
-            }
-        }
-
-        private void PopulateFramePropertyModifiers(RawTable table, ModelData model)
-        {
-            foreach (var row in table.Rows)
-            {
-                var uniqueName = row.GetString("UniqueName");
-                if (string.IsNullOrEmpty(uniqueName)) continue;
-
-                model.FramePropertyModifiers.Add(new FramePropertyModifier
-                {
-                    Source = Loc(model, table, row),
-                    Story = row.GetString("Story"),
-                    Label = row.GetString("Label"),
-                    UniqueName = uniqueName,
-                    AreaModifier = row.GetDouble("AreaModifier", 1),
-                    As2Modifier = row.GetDouble("As2Modifier", 1),
-                    As3Modifier = row.GetDouble("As3Modifier", 1),
-                    JModifier = row.GetDouble("JModifier", 1),
-                    I22Modifier = row.GetDouble("I22Modifier", 1),
-                    I33Modifier = row.GetDouble("I33Modifier", 1),
-                    MassModifier = row.GetDouble("MassModifier", 1),
-                    WeightModifier = row.GetDouble("WeightModifier", 1)
                 });
             }
         }
@@ -430,7 +458,6 @@ namespace ETABSModelDefinitionValidator.Excel
                     Story = row.GetString("Story"),
                     Label = row.GetString("Label"),
                     UniqueName = uniqueName,
-                    OffsetOption = row.GetString("OffsetOption"),
                     OffsetIMm = row.GetDouble("OffsetI"),
                     OffsetJMm = row.GetDouble("OffsetJ")
                 });
@@ -466,11 +493,155 @@ namespace ETABSModelDefinitionValidator.Excel
                     Story = row.GetString("Story"),
                     Label = row.GetString("Label"),
                     UniqueName = uniqueName,
-                    DesignType = row.GetString("DesignType"),
                     DesignSection = row.GetString("DesignSection"),
-                    FrameType = row.GetString("FrameType")
                 });
             }
+        }
+
+        // Connectivity tables: headers verified against ETABS 22.3 (UniqueName, Story, <Kind>Bay, UniquePt...).
+
+        private void PopulatePoints(RawTable table, ModelData model)
+        {
+            foreach (var row in table.Rows)
+            {
+                var uniqueName = row.GetString("UniqueName");
+                if (string.IsNullOrEmpty(uniqueName)) continue;
+
+                model.PointObjects.Add(new PointObject
+                {
+                    Source = Loc(model, table, row),
+                    UniqueName = uniqueName,
+                    Story = row.GetString("Story"),
+                    Label = row.GetString("PointBay"),
+                    X = row.GetDouble("X"),
+                    Y = row.GetDouble("Y"),
+                    Z = row.GetDouble("Z")
+                });
+            }
+        }
+
+        private void PopulateAreaObjects(RawTable table, ModelData model, string labelColumn, List<WallObject> target)
+        {
+            foreach (var row in table.Rows)
+            {
+                var uniqueName = row.GetString("UniqueName");
+                if (string.IsNullOrEmpty(uniqueName)) continue;
+
+                var area = new WallObject
+                {
+                    Source = Loc(model, table, row),
+                    UniqueName = uniqueName,
+                    Story = row.GetString("Story"),
+                    Label = row.GetString(labelColumn)
+                };
+                // UniquePt1..UniquePtN; a triangle leaves the last one blank.
+                for (var i = 1; ; i++)
+                {
+                    var key = "UniquePt" + i;
+                    if (!table.Columns.Any(c => c.NormalizedKey == key)) break;
+                    var point = row.GetString(key);
+                    if (!string.IsNullOrEmpty(point)) area.PointNames.Add(point);
+                }
+                target.Add(area);
+            }
+        }
+
+        private void PopulatePierLabels(RawTable table, ModelData model)
+        {
+            foreach (var row in table.Rows)
+            {
+                var uniqueName = row.GetString("UniqueName");
+                if (string.IsNullOrEmpty(uniqueName)) continue;
+
+                model.PierLabelAssignments.Add(new PierLabelAssignment
+                {
+                    Source = Loc(model, table, row),
+                    Story = row.GetString("Story"),
+                    Label = row.GetString("Label"),
+                    UniqueName = uniqueName,
+                    PierName = row.GetString("PierName")
+                });
+            }
+        }
+
+        private void PopulateFrames(RawTable table, ModelData model, string labelColumn, FrameKind kind)
+        {
+            foreach (var row in table.Rows)
+            {
+                var uniqueName = row.GetString("UniqueName");
+                if (string.IsNullOrEmpty(uniqueName)) continue;
+
+                model.FrameObjects.Add(new FrameObject
+                {
+                    Source = Loc(model, table, row),
+                    UniqueName = uniqueName,
+                    Story = row.GetString("Story"),
+                    Label = row.GetString(labelColumn),
+                    Kind = kind,
+                    PointI = row.GetString("UniquePtI"),
+                    PointJ = row.GetString("UniquePtJ")
+                });
+            }
+        }
+
+        private void PopulateLinks(RawTable table, ModelData model)
+        {
+            foreach (var row in table.Rows)
+            {
+                var name = row.GetString("Name");
+                if (string.IsNullOrEmpty(name)) continue;
+
+                model.LinkObjects.Add(new LinkObject
+                {
+                    Source = Loc(model, table, row),
+                    Name = name,
+                    Story = row.GetString("Story"),
+                    Point1 = row.GetString("UniquePt1"),
+                    Point2 = row.GetString("UniquePt2")
+                });
+            }
+        }
+
+        private void PopulateRestraints(RawTable table, ModelData model)
+        {
+            foreach (var row in table.Rows)
+            {
+                var uniqueName = row.GetString("UniqueName");
+                if (string.IsNullOrEmpty(uniqueName)) continue;
+
+                model.JointRestraints.Add(new JointRestraint
+                {
+                    Source = Loc(model, table, row),
+                    UniqueName = uniqueName,
+                    Story = row.GetString("Story"),
+                    Label = row.GetString("Label"),
+                    Fixed = new[] { "UX", "UY", "UZ", "RX", "RY", "RZ" }.Select(d => row.GetYesNoBool(d)).ToArray()
+                });
+            }
+        }
+
+        private void PopulateAreaLoadSets(RawTable table, ModelData model)
+        {
+            foreach (var row in table.Rows)
+            {
+                var uniqueName = row.GetString("UniqueName");
+                if (string.IsNullOrEmpty(uniqueName)) continue;
+
+                model.AreaLoadSets.Add(new AreaLoadSetAssignment
+                {
+                    Source = Loc(model, table, row),
+                    UniqueName = uniqueName,
+                    Story = row.GetString("Story"),
+                    Label = row.GetString("Label"),
+                    LoadSet = row.GetString("LoadSet")
+                });
+            }
+        }
+
+        private void PopulateBaseElevation(RawTable table, ModelData model)
+        {
+            var elevations = table.Rows.Select(r => r.GetNullableDouble("BSElev")).Where(v => v.HasValue).Select(v => v.Value).ToList();
+            if (elevations.Count > 0) model.BaseElevationMm = elevations.Min();
         }
     }
 }

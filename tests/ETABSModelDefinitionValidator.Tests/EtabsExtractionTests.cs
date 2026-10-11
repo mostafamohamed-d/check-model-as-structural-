@@ -121,20 +121,23 @@ namespace ETABSModelDefinitionValidator.Tests
 
         // EX-05
         [Fact]
-        public void EX05_field_names_unavailable_falls_back_to_field_keys_without_losing_the_table()
+        public void EX05_field_names_unavailable_and_keys_do_not_match_schema_makes_the_table_unusable()
         {
+            // Previously the modifiers silently defaulted to 1.0 here ("m11Mod" is not "M11Modifier"),
+            // which could make WALL-003 report on values ETABS never gave. Now: schema invalid,
+            // nothing populated, dependent checks NOT_CHECKED, run incomplete.
             var sap = ModelWithWallsAndSlabs();
             sap.DatabaseTables.GetAllFieldsReturn = 1;
 
             var (model, provider) = Extract(sap, Walls);
 
-            Assert.Equal(3, model.WallProperties.Count);
-            var table = provider.ExtractedTables.Single();
-            Assert.Contains(table.Columns, c => c.OriginalHeader == "WallThickness");
-            Assert.InRange(model.WallProperties[0].ThicknessMm, 300 - Tol, 300 + Tol); // "WallThickness" key normalizes to the same column
-            // Keys like "m11Mod" do NOT normalize to "M11Modifier": modifiers fall back to the 1.0 default.
-            // Documented limitation - only matters if ETABS refuses GetAllFieldsInTable.
-            Assert.InRange(model.WallProperties[0].M11Modifier, 1 - Tol, 1 + Tol);
+            Assert.Contains(provider.ExtractedTables.Single().Columns, c => c.OriginalHeader == "WallThickness");
+            var report = model.GetTableReport(Walls);
+            Assert.Equal(TableImportState.SchemaInvalid, report.State);
+            Assert.Contains("M11Modifier", report.MissingColumns);
+            Assert.Empty(model.WallProperties);
+            Assert.False(model.WasTableFound(Walls));
+            Assert.All(new WallModifierRule().Validate(model, new ValidationProfileConfig()), r => Assert.Equal(ValidationStatus.NotChecked, r.Status));
         }
 
         // EX-06
@@ -269,6 +272,70 @@ namespace ETABSModelDefinitionValidator.Tests
             Assert.Contains(Slabs, model.SkippedTables);
             Assert.DoesNotContain(model.ImportIssues, i => i.Message.Contains("workbook"));
             Assert.DoesNotContain(model.ImportIssues, i => i.Level != ImportIssueLevel.Info);
+        }
+
+        // EX-17..19: corrupted live data gets the same treatment as a corrupted Excel export
+        [Fact]
+        public void EX17_live_text_in_numeric_field_rejects_the_record_and_marks_the_table_partial()
+        {
+            var sap = ModelWithWallsAndSlabs();
+            sap.DatabaseTables.Tables.Single(t => t.Key == Walls).Records[1][2] = "abc"; // W350 thickness
+
+            var (model, _) = Extract(sap, Walls);
+
+            var report = model.GetTableReport(Walls);
+            Assert.Equal(TableImportState.Partial, report.State);
+            Assert.Equal(1, report.RejectedCount);
+            Assert.DoesNotContain(model.WallProperties, w => w.Name == "W350-C40");
+            Assert.Equal(RunVerdict.Incomplete, RunAssessment.Evaluate(
+                new ValidationEngine().Run(model, new ValidationProfileConfig(), new[] { new WallThicknessRule() }), model, new[] { new WallThicknessRule() }).Verdict);
+        }
+
+        [Fact]
+        public void EX18_live_blank_modifier_is_rejected_not_defaulted()
+        {
+            var sap = ModelWithWallsAndSlabs();
+            sap.DatabaseTables.Tables.Single(t => t.Key == Walls).Records[0][6] = ""; // W300 m11
+
+            var (model, _) = Extract(sap, Walls);
+
+            Assert.Equal(TableImportState.Partial, model.GetTableReport(Walls).State);
+            Assert.DoesNotContain(model.WallProperties, w => w.Name == "W300-C40");
+        }
+
+        [Fact]
+        public void EX19_live_table_that_failed_to_read_is_FailedToRead_not_missing()
+        {
+            var sap = ModelWithWallsAndSlabs();
+            sap.DatabaseTables.FailDisplayFor.Add(Slabs);
+
+            var (model, _) = Extract(sap);
+
+            Assert.Equal(TableImportState.FailedToRead, model.GetTableReport(Slabs).State);
+            Assert.Equal(TableImportState.Read, model.GetTableReport(Walls).State);
+            Assert.False(model.WasTableFound(Slabs));
+        }
+
+        // EX-20/21: regression for the live log "(unsaved model)" + every table -96 - the app had attached
+        // to an ETABS still at the CSI Account Sign In screen. Connect must fail fast with one clear message.
+        [Fact]
+        public void EX20_instance_with_no_model_and_no_table_listing_is_refused_at_connect()
+        {
+            var sap = ModelWithWallsAndSlabs();
+            sap.DatabaseTables.GetAllTablesReturn = 1;
+            sap.DatabaseTables.GetAvailableTablesReturn = 1;
+            var session = EtabsSession.FromSapModel(typeof(ETABSv1.eUnits).Assembly, sap, modelPath: "");
+
+            var ex = Assert.Throws<InvalidOperationException>(() => session.EnsureModelReady("CSI Account Sign In for ETABS"));
+            Assert.Contains("no model open", ex.Message);
+            Assert.Contains("CSI Account Sign In", ex.Message);
+        }
+
+        [Fact]
+        public void EX21_unsaved_model_that_still_lists_its_tables_is_accepted()
+        {
+            var session = EtabsSession.FromSapModel(typeof(ETABSv1.eUnits).Assembly, ModelWithWallsAndSlabs(), modelPath: "");
+            session.EnsureModelReady("ETABS Ultimate 22.3.0 - Untitled"); // must not throw
         }
 
         // EX-15

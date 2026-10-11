@@ -22,12 +22,32 @@ If they don't match your actual project standard, they are one JSON edit away fr
 | Material Properties - Basic Mechanical Properties | `Mat Prop - Basic Mech Props` |
 | Load Pattern Definitions | `Load Pattern Definitions` |
 | Load Case Definitions - Linear Static | `Load Cases - Linear Static` |
-| Frame Assignments - Property Modifiers | `Frame Assigns - Prop Modifiers` |
 | Frame Assignments - Frame Auto Mesh Options | `Frame Assigns - Frame Auto Mesh` |
 | Frame Assignments - End Length Offsets | `Frame Assigns - End Len Offsets` |
 | Diaphragm Definitions | `Diaphragm Definitions` |
 | Concrete Column Overwrites - ACI 318-19 | `Conc Col Over ACI 318-19` |
-| Reinforcing Bar Sizes | `Reinforcing Bar Sizes` |
+
+Tables of the geometry / support / load-assignment checks (merged from the pier-validation tool).
+Titles and headers verified live against ETABS 22.3 with `--etabs-probe` (no reference workbook yet):
+
+| Semantic table name | Headers used |
+|---|---|
+| Point Object Connectivity | `UniqueName`, `Story`, `PointBay`, `X`, `Y`, `Z` |
+| Wall Object Connectivity / Floor Object Connectivity | `UniqueName`, `Story`, `WallBay`/`FloorBay`, `UniquePt1..4` |
+| Column Object Connectivity / Beam Object Connectivity | `Unique Name`, `Story`, `ColumnBay`/`BeamBay`, `UniquePtI`, `UniquePtJ` |
+| Link Object Connectivity | `Name`, `Story`, `UniquePt1`, `UniquePt2` |
+| Area Assignments - Pier Labels | `Story`, `Label`, `UniqueName`, `Pier Name` |
+| Joint Assignments - Restraints | `Story`, `Label`, `UniqueName`, `UX`..`RZ` (Yes/No) |
+| Area Load Assignments - Uniform Load Sets | `Story`, `Label`, `UniqueName`, `Load Set` |
+| Tower and Base Story Definitions | `BSElev` (base elevation; lowest tower wins) |
+
+ETABS returns error code 1 (no table) when one of these is empty — e.g. no restraints, no links,
+no load sets. `Frame Loads Assignments - Distributed` and `Area Load Assignments - Uniform` fail
+the same way even when loads exist (they are filtered by the load patterns selected for display),
+so a live run reads those loads through the object API instead (`FrameObj.GetLoadDistributed` /
+`AreaObj.GetLoadUniform` on group `All`), and replaces table coordinates with exact ones from
+`PointObj.GetAllPoints` (tables round to display precision, 0.1 mm in a metre model — enough to
+hide the 0.03–0.05 mm column offsets found in a real model).
 
 Every sheet has the ETABS 3-row header pattern:
 - Row 1: `TABLE:  <Table Title>` (title, spans columns, rest of row is `None`)
@@ -50,18 +70,31 @@ projects (Section 6 of the master prompt).
 | SLAB-001 | Slab Property Definitions | `Name`, `m11/m22/m12 Modifier` | classified PT → all three == 0.35 | 0.35 | — | PROJECT_STANDARD | FAIL |
 | SLAB-002 | Slab Property Definitions | `Name`, `m11/m22/m12 Modifier` | classified Ordinary → all three == 0.25 | 0.25 | — | PROJECT_STANDARD | FAIL |
 | SLAB-003 | Slab Property Definitions | `Name`, `m11/m22/m12 Modifier` | classified Stair/Ramp → all three == 0.01 | 0.01 | — | PROJECT_STANDARD | FAIL |
+| SLAB-004 | Slab Property Definitions | `Name`, `m11/m22/m12 Modifier` | classified Raft → all three == 1.0 | 1.0 | — | MODELING_STANDARD (pending confirmation, discrepancy #2) | FAIL |
 | PIER-001 | Pier Section Properties | `Width Bottom`, `Width Top` | equal | equal | — | MODEL_INTEGRITY | FAIL |
 | PIER-002 | Pier Section Properties | `Thickness Bottom`, `Thickness Top` | equal | equal | — | MODEL_INTEGRITY | FAIL |
 | MODAL-001 | Modal Cases - Ritz | `Target Ratio` | >= configured threshold | 95.0 | — | PROJECT_STANDARD | FAIL |
 | MAT-REBAR-001 | Mat Prop - Rebar Data | `Fy/Fu/Fye/Fue` | matches configured grade profile | grade-dependent | — | PROJECT_STANDARD (REFERENCE_MODEL sourced) | FAIL |
 | MAT-CONC-001 | Mat Prop - Concrete Data | `Material`, `Fc` | grade parsed from name == Fc | match | unparsable name → WARNING | CONSISTENCY | FAIL |
-| MAT-CONC-002 | Mat Prop - Concrete Data + Basic Mech Props | full property set | matches configured profile per field | profile-dependent | — | mixed (see per-field `SourceType`) | FAIL/WARNING per field |
+| MAT-CONC-002 | Mat Prop - Concrete Data + Basic Mech Props | `Fc`, `E1`, `Unit Mass` (or `Unit Weight`) | E1 within 5% of EITHER ACI 318-19 19.2.2.1(a) `wc^1.5*0.043*sqrt(fc)` (wc 1440-2560 kg/m3, from the material density) OR (b) `4700*sqrt(fc)` (normalweight only) | either equation | lightweight: (a) only; no usable density and lightweight → NOT_CHECKED; non-ACI profile → NOT_CHECKED | CODE | WARNING |
 | LOAD-001 | Load Pattern Definitions | `Type`, `Self Weight Multiplier` | Type == Dead (case-insensitive) → multiplier == 1.0 | 1.0 | non-Dead patterns not checked | CODE (self-weight physics) | FAIL |
 | LOAD-002 | Load Cases - Linear Static | `Name`, `Load Name` | Load Name equals Name exactly | equal | — | CONSISTENCY | WARNING |
 | FRAME-001 | Frame Assigns - Frame Auto Mesh | `Auto Mesh` | == Yes | Yes | — | MODELING_STANDARD | FAIL |
 | FRAME-002 | Frame Assigns - End Len Offsets (+ Conc Col Over ACI 318-19 to identify columns) | `Offset I`, `Offset J` | integral within tolerance, columns only | whole number | beams (non-columns) | MODELING_STANDARD | FAIL |
 | COL-001 | Conc Col Over ACI 318-19 | `Design Section` | == Program Determined | Program Determined | — | PROJECT_STANDARD | FAIL |
 | DIA-001 | Diaphragm Definitions | `Rigidity Type` | == Semi-Rigid | Semi-Rigid | — | MODELING_STANDARD | FAIL |
+| GEO-001 | Wall Object Connectivity + Point Object Connectivity | `UniquePt1..4`, `X/Y/Z` | 4 corners, 2 Z levels (2/2), top edge over bottom edge in plan | vertical quad | — (tolerance `Geometry.CoordinateToleranceMm`, 0) | MODELING_STANDARD | FAIL |
+| GEO-002 | Column Object Connectivity + Point Object Connectivity | `UniquePtI/J`, `X/Y` | X and Y of both joints equal, no tolerance | dX = dY = 0 | joint missing → WARNING | MODEL_INTEGRITY | FAIL |
+| GEO-003 | Column/Beam/Link/Wall/Floor Object Connectivity, Point Object Connectivity, Tower and Base Story Definitions | joint names | lower joint of each exactly plumb column = top joint of another plumb column (identity, not coordinates) | column below | founded at base level; tied by a link to another column | MODEL_INTEGRITY | FAIL |
+| GEO-004 | Area Assignments - Pier Labels + Wall Object Connectivity + Point Object Connectivity | `Pier Name`, corners | panels of one (story, pier) form one connected group in plan | 1 group | adjacency within `Geometry.PierAdjacencyToleranceMm` (20) | MODEL_INTEGRITY | FAIL |
+| SUP-001 | Joint Assignments - Restraints + Point Object Connectivity | `UX..RZ`, `Z` | restrained joint at the lowest joint Z | lowest floor | foundation model (`fnd` in file name) → no restraint at all; table absent → NOT_CHECKED | MODEL_INTEGRITY | FAIL |
+| LOAD-003 | object API `FrameObj.GetLoadDistributed` (live only) | load type, direction | force: Gravity or Projected Gravity; no distributed moment at all | Gravity force only | Global Z fails deliberately; any distributed moment fails (user decision 2026-10-11); Excel runs → NOT_CHECKED | MODELING_STANDARD | FAIL |
+| LOAD-004 | Wall Object Connectivity + `AreaObj.GetLoadUniform` (live only) + Area Load Assignments - Uniform Load Sets | direction, load set | no gravity uniform load, no load set on a wall | none | lateral loads pass; unreadable part → NOT_CHECKED | MODELING_STANDARD | FAIL |
+
+Failing objects of GEO-001..004, SUP-001 and LOAD-003/004 can be written to the ETABS groups
+`VChk_WallGeometry`, `VChk_ColumnPlumb`, `VChk_ColumnContinuity`, `VChk_PierContinuity`,
+`VChk_Restraints`, `VChk_LineLoads`, `VChk_WallLoads` (same names as the pier-validation tool).
+Each group is emptied first, then refilled, after the user confirms — the only model write the tool makes.
 
 ## Discrepancies found vs. the original spec (resolved with explicit config defaults)
 

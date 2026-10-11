@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using ETABSModelDefinitionValidator.Excel;
 
 namespace ETABSModelDefinitionValidator.EtabsApi
@@ -51,22 +50,15 @@ namespace ETABSModelDefinitionValidator.EtabsApi
                 {
                     var text = tableData[r * columnCount + c];
                     if (string.IsNullOrEmpty(text) || normalized[c].Length == 0) continue; // blank cell == absent, as in Excel
-                    row.Values[normalized[c]] = ParseCell(text);
+                    // Kept as text, never pre-parsed: ETABS unique names such as "15E0" are valid
+                    // numbers ("15") and were silently rewritten, colliding with object "15". Numeric
+                    // columns still parse on read (RawRow.GetDouble, invariant culture first).
+                    row.Values[normalized[c]] = text.Trim();
                 }
                 table.Rows.Add(row);
             }
 
             return table;
-        }
-
-        /// <summary>Numbers become double (as ClosedXML gives for numeric cells); everything else stays
-        /// text. Invariant culture - the API always formats numbers invariantly. Text with a leading
-        /// zero ("007") is kept as text so a name is never silently rewritten.</summary>
-        internal static object ParseCell(string text)
-        {
-            var t = text.Trim();
-            if (t.Length > 1 && t[0] == '0' && char.IsDigit(t[1])) return t;
-            return double.TryParse(t, NumberStyles.Float, CultureInfo.InvariantCulture, out var d) ? (object)d : t;
         }
     }
 }
