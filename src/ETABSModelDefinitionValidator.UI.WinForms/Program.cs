@@ -17,6 +17,7 @@ namespace ETABSModelDefinitionValidator.UI.WinForms
             if (Environment.OSVersion.Version.Major >= 6) SetProcessDPIAware();
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
+            if (!Licensing.LicenseInfo.EnsureLicensed()) return;
             Application.Run(new MainForm());
         }
     }

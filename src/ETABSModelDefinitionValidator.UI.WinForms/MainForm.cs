@@ -325,6 +325,8 @@ namespace ETABSModelDefinitionValidator.UI.WinForms
 
         private async void RunValidation()
         {
+            if (!Licensing.LicenseInfo.EnsureLicensed()) return;
+
             if (_connectedPid == null)
             {
                 MessageBox.Show(this, "Connect to a running ETABS model first.", "Not connected", MessageBoxButtons.OK, MessageBoxIcon.Warning);

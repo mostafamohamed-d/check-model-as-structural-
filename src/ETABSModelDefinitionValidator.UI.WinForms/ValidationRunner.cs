@@ -63,6 +63,9 @@ namespace ETABSModelDefinitionValidator.UI.WinForms
             int? etabsProcessId = null,
             IValidationLogger logger = null)
         {
+            if (!ToolLicensing.LicenseGate.Check(Licensing.LicenseInfo.ProductId).IsValid)
+                throw new InvalidOperationException("This PC has no valid license for " + Licensing.LicenseInfo.Name + ".");
+
             EtabsSession attached = null;
             var run = await RunCoreAsync(
                 (tables, liveData) =>

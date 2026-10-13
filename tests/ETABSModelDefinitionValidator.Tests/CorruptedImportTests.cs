@@ -245,7 +245,7 @@ namespace ETABSModelDefinitionValidator.Tests
             var path = Workbook(); // walls + concrete only: every other rule's table is missing
             var csv = Path.ChangeExtension(path, ".csv");
 
-            var exit = ETABSModelDefinitionValidator.UI.Program.Main(new[] { path, ConfigPath(), csv });
+            var exit = ETABSModelDefinitionValidator.UI.Program.Run(new[] { path, ConfigPath(), csv });
 
             Assert.Equal(3, exit); // INCOMPLETE
             var verdict = File.ReadAllText(Path.ChangeExtension(csv, ".verdict.txt"));

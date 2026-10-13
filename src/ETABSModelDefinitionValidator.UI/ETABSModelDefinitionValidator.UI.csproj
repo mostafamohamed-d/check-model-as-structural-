@@ -14,6 +14,15 @@
     <DebugType>full</DebugType>
   </PropertyGroup>
 
+  <!-- Same licensing kit as the desktop UI, compiled in (not a shared DLL). -->
+  <ItemGroup>
+    <Compile Include="..\ETABSModelDefinitionValidator.UI.WinForms\Licensing\**\*.cs" LinkBase="Licensing" />
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Management" />
+    <Reference Include="System.Runtime.Serialization" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\ETABSModelDefinitionValidator.Core\ETABSModelDefinitionValidator.Core.csproj" />
     <ProjectReference Include="..\ETABSModelDefinitionValidator.Excel\ETABSModelDefinitionValidator.Excel.csproj" />

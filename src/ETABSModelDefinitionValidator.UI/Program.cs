@@ -20,7 +20,23 @@ namespace ETABSModelDefinitionValidator.UI
     /// </summary>
     public static class Program
     {
+        [STAThread] // the activation dialog is WinForms
         public static int Main(string[] args)
+        {
+            ToolLicensing.LicensingOptions.ExpiryWarningDays = 0; // no message box in scripts; warned on stderr below
+            if (!Licensing.LicenseInfo.EnsureLicensed())
+            {
+                Console.Error.WriteLine("Not licensed for this PC.");
+                return 1;
+            }
+            ToolLicensing.LicenseResult license = ToolLicensing.LicenseGate.Check(Licensing.LicenseInfo.ProductId);
+            if (license.DaysLeft.HasValue && license.DaysLeft.Value <= 14)
+                Console.Error.WriteLine("Warning: the license ends in " + license.DaysLeft.Value + " days; ask " + Licensing.LicenseInfo.IssuerEmail + " for a renewal.");
+            return Run(args);
+        }
+
+        /// <summary><see cref="Main"/> without the license gate (tests call this).</summary>
+        public static int Run(string[] args)
         {
             if (args.Length < 1)
             {
